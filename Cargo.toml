@@ -1,0 +1,13 @@
+[package]
+name = "mdns"
+version = "0.1.0"
+authors = ["Paul Lietar <paul@lietar.net>"]
+
+[dependencies]
+net2 = "*"
+dns-parser = { path = "../dns-parser" }
+log = "*"
+get_if_addrs = "*"
+
+[dev-dependencies]
+env_logger = "*"
