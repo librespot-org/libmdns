@@ -4,10 +4,18 @@ version = "0.1.0"
 authors = ["Paul Lietar <paul@lietar.net>"]
 
 [dependencies]
-net2 = "*"
-dns-parser = { path = "../dns-parser" }
-log = "*"
-get_if_addrs = "*"
+byteorder  = "0.5"
+eventual   = "0.1"
+libc       = "0.2"
+log        = "0.3"
+mio        = "0.5"
+multimap   = "0.2"
+net2       = "0.2"
+nix        = "0.5"
+rand       = "0.3"
+rotor      = "0.6"
+
+dns-parser = { git = "http://github.com/plietar/dns-parser" }
 
 [dev-dependencies]
-env_logger = "*"
+env_logger = "0.3"
