@@ -3,6 +3,11 @@ name = "mdns"
 version = "0.1.0"
 authors = ["Paul Lietar <paul@lietar.net>"]
 
+description = "Rust mDNS responder"
+repository = "https://github.com/plietar/rust-mdns"
+readme = "README.md"
+license = "MIT"
+
 [dependencies]
 byteorder  = "0.5"
 eventual   = "0.1"

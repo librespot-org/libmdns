@@ -64,7 +64,10 @@ impl FSM {
         };
         try!(socket.join_multicast(&group));
 
-        let hostname = try!(net::gethostname());
+        let mut hostname = try!(net::gethostname());
+        if !hostname.ends_with(".local") {
+            hostname.push_str(".local");
+        }
 
         let (tx, rx) = channel();
         let fsm = FSM {
