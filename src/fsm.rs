@@ -154,10 +154,9 @@ impl FSM {
 
     fn handle_question(&self, question: &dns_parser::Question, mut builder: AnswerBuilder) -> AnswerBuilder {
         match question.qtype {
-            QueryType::A if question.qname == self.hostname => {
-                builder = self.add_ip_rr(builder, DEFAULT_TTL);
-            }
-            QueryType::AAAA if question.qname == self.hostname => {
+            QueryType::A |
+            QueryType::AAAA |
+            QueryType::All if question.qname == self.hostname => {
                 builder = self.add_ip_rr(builder, DEFAULT_TTL);
             }
             QueryType::PTR => {
