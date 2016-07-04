@@ -1,17 +1,14 @@
 use dns_parser::{self, QueryClass, QueryType, Name, RRData};
-use eventual;
 use mio;
 use mio::{EventSet, PollOpt};
 use mio::udp::UdpSocket;
-use rand::{Rng, thread_rng};
-use rotor::{self, GenericScope, Scope, void, Void};
+use rotor::{self, GenericScope, Scope, void};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::io;
 use std::io::ErrorKind::Interrupted;
 use std::sync::mpsc::{channel, Sender, Receiver, TryRecvError};
-use std::collections::HashMap;
-use multimap::MultiMap;
 use net;
+use services::{SharedServices, ServiceData};
 
 const MDNS_PORT : u16 = 5353;
 #[allow(non_snake_case)]
@@ -23,35 +20,24 @@ pub fn ANY_ADDR() -> IpAddr {
     IpAddr::V4(Ipv4Addr::new(0,0,0,0))
 }
 
-const DEFAULT_TTL : u32 = 60;
+pub const DEFAULT_TTL : u32 = 60;
 
 pub type AnswerBuilder = dns_parser::Builder<dns_parser::Answers>;
 
 pub enum Command {
+    SendUnsolicited(ServiceData, u32, bool),
     Shutdown,
-    Register(ServiceData, eventual::Complete<usize, Void>),
-    Unregister(usize),
 }
 
-pub struct ServiceData {
-    pub name: Name<'static>,
-    pub typ: Name<'static>,
-    pub port: u16,
-    pub txt: Vec<u8>,
-}
 
 pub struct FSM {
     socket: UdpSocket,
     rx: Receiver<Command>,
-
-    hostname: Name<'static>,
-    services: HashMap<usize, ServiceData>,
-    by_type: MultiMap<Name<'static>, usize>,
-    by_name: HashMap<Name<'static>, usize>
+    services: SharedServices,
 }
 
 impl FSM {
-    pub fn new() -> io::Result<(FSM, Sender<Command>)> {
+    pub fn new(services: &SharedServices) -> io::Result<(FSM, Sender<Command>)> {
         let socket = try!(UdpSocket::v4());
 
         net::set_reuse_addr(&socket, true);
@@ -64,19 +50,11 @@ impl FSM {
         };
         try!(socket.join_multicast(&group));
 
-        let mut hostname = try!(net::gethostname());
-        if !hostname.ends_with(".local") {
-            hostname.push_str(".local");
-        }
-
         let (tx, rx) = channel();
         let fsm = FSM {
             socket: socket,
             rx: rx,
-            hostname: Name::from_str(hostname).unwrap(),
-            services: HashMap::new(),
-            by_type: MultiMap::new(),
-            by_name: HashMap::new(),
+            services: services.clone(),
         };
 
         Ok((fsm, tx))
@@ -153,31 +131,33 @@ impl FSM {
     }
 
     fn handle_question(&self, question: &dns_parser::Question, mut builder: AnswerBuilder) -> AnswerBuilder {
+        let services = self.services.lock().unwrap();
+
         match question.qtype {
             QueryType::A |
             QueryType::AAAA |
-            QueryType::All if question.qname == self.hostname => {
-                builder = self.add_ip_rr(builder, DEFAULT_TTL);
+            QueryType::All if question.qname == services.hostname => {
+                builder = self.add_ip_rr(&services.hostname, builder, DEFAULT_TTL);
             }
             QueryType::PTR => {
-                for id in self.by_type.get_vec(&question.qname).unwrap_or(&vec![]) {
-                    let svc = self.services.get(id).expect("missing service");
+                for id in services.by_type.get_vec(&question.qname).unwrap_or(&vec![]) {
+                    let svc = services.by_id.get(id).expect("missing service");
                     builder = svc.add_ptr_rr(builder, DEFAULT_TTL);
-                    builder = svc.add_srv_rr(&self.hostname, builder, DEFAULT_TTL);
+                    builder = svc.add_srv_rr(&services.hostname, builder, DEFAULT_TTL);
                     builder = svc.add_txt_rr(builder, DEFAULT_TTL);
-                    builder = self.add_ip_rr(builder, DEFAULT_TTL);
+                    builder = self.add_ip_rr(&services.hostname, builder, DEFAULT_TTL);
                 }
             }
             QueryType::SRV => {
-                if let Some(id) = self.by_name.get(&question.qname) {
-                    let svc = self.services.get(id).expect("missing service");
-                    builder = svc.add_srv_rr(&self.hostname, builder, DEFAULT_TTL);
-                    builder = self.add_ip_rr(builder, DEFAULT_TTL);
+                if let Some(id) = services.by_name.get(&question.qname) {
+                    let svc = services.by_id.get(id).expect("missing service");
+                    builder = svc.add_srv_rr(&services.hostname, builder, DEFAULT_TTL);
+                    builder = self.add_ip_rr(&services.hostname, builder, DEFAULT_TTL);
                 }
             }
             QueryType::TXT => {
-                if let Some(id) = self.by_name.get(&question.qname) {
-                    let svc = self.services.get(id).expect("missing service");
+                if let Some(id) = services.by_name.get(&question.qname) {
+                    let svc = services.by_id.get(id).expect("missing service");
                     builder = svc.add_txt_rr(builder, DEFAULT_TTL);
                 }
             }
@@ -187,7 +167,7 @@ impl FSM {
         builder
     }
 
-    fn add_ip_rr(&self, mut builder: AnswerBuilder, ttl: u32) -> AnswerBuilder {
+    fn add_ip_rr(&self, hostname: &Name, mut builder: AnswerBuilder, ttl: u32) -> AnswerBuilder {
         for iface in net::getifaddrs() {
             if iface.is_loopback() {
                 continue;
@@ -195,10 +175,10 @@ impl FSM {
 
             match iface.ip() {
                 Some(IpAddr::V4(ip)) => {
-                    builder = builder.add_answer(&self.hostname, QueryClass::IN, ttl, &RRData::A(ip))
+                    builder = builder.add_answer(hostname, QueryClass::IN, ttl, &RRData::A(ip))
                 }
                 Some(IpAddr::V6(ip)) => {
-                    builder = builder.add_answer(&self.hostname, QueryClass::IN, ttl, &RRData::AAAA(ip))
+                    builder = builder.add_answer(hostname, QueryClass::IN, ttl, &RRData::AAAA(ip))
                 }
                 None => ()
             }
@@ -211,11 +191,13 @@ impl FSM {
         let mut builder = dns_parser::Builder::new_response(0, false).move_to::<dns_parser::Answers>();
         builder.set_max_size(None);
 
+        let services = self.services.lock().unwrap();
+
         builder = svc.add_ptr_rr(builder, ttl);
-        builder = svc.add_srv_rr(&self.hostname, builder, ttl);
+        builder = svc.add_srv_rr(&services.hostname, builder, ttl);
         builder = svc.add_txt_rr(builder, ttl);
         if include_ip {
-            builder = self.add_ip_rr(builder, ttl);
+            builder = self.add_ip_rr(&services.hostname, builder, ttl);
         }
 
         if !builder.is_empty() {
@@ -248,48 +230,19 @@ impl rotor::Machine for FSM {
         unimplemented!()
     }
 
-    fn wakeup(mut self, scope: &mut Scope<Self::Context>) -> rotor::Response<Self, Self::Seed> {
+    fn wakeup(self, scope: &mut Scope<Self::Context>) -> rotor::Response<Self, Self::Seed> {
         loop {
             match self.rx.try_recv() {
                 Ok(Command::Shutdown) => {
                     scope.shutdown_loop();
                     return rotor::Response::done();
                 }
-                Ok(Command::Register(svc, complete)) => {
-                    let mut id = thread_rng().gen::<usize>();
-                    while self.services.contains_key(&id) {
-                        id = thread_rng().gen::<usize>();
-                    }
-
-                    trace!("registering {} {}", svc.name, id);
-
-                    self.send_unsolicited(&svc, DEFAULT_TTL, true).unwrap();
-
-                    self.by_type.insert(svc.typ.clone(), id);
-                    self.by_name.insert(svc.name.clone(), id);
-                    self.services.insert(id, svc);
-
-                    complete.complete(id);
-                }
-                Ok(Command::Unregister(id)) => {
-                    use std::collections::hash_map::Entry;
-
-                    let svc = self.services.remove(&id).expect("unknown service");
-
-                    trace!("unregistering {} {}", svc.name, id);
-                    self.send_unsolicited(&svc, 0, false).unwrap();
-
-                    if let Some(entries) = self.by_type.get_vec_mut(&svc.typ) {
-                        entries.retain(|&e| e == id);
-                    }
-
-                    match self.by_name.entry(svc.name) {
-                        Entry::Occupied(entry) => {
-                            assert_eq!(*entry.get(), id);
-                            entry.remove();
-                        }
-                        _ => {
-                            panic!("unknown/wrong service for id {}", id);
+                Ok(Command::SendUnsolicited(svc, ttl, include_ip)) => {
+                    match self.send_unsolicited(&svc, ttl, include_ip) {
+                        Ok(_) => (),
+                        Err(e) => {
+                            warn!("Error sending unsolicited: {:?}", e);
+                            return rotor::Response::error(Box::new(e));
                         }
                     }
                 }
@@ -305,24 +258,5 @@ impl rotor::Machine for FSM {
         }
 
         rotor::Response::ok(self)
-    }
-}
-
-impl ServiceData {
-    fn add_ptr_rr(&self, builder: AnswerBuilder, ttl: u32) -> AnswerBuilder {
-        builder.add_answer(&self.typ, QueryClass::IN, ttl, &RRData::PTR(self.name.clone()))
-    }
-
-    fn add_srv_rr(&self, hostname: &Name, builder: AnswerBuilder, ttl: u32) -> AnswerBuilder {
-        builder.add_answer(&self.name, QueryClass::IN, ttl, &RRData::SRV {
-            priority: 0,
-            weight: 0,
-            port: self.port,
-            target: hostname.clone(),
-        })
-    }
-
-    fn add_txt_rr(&self, builder: AnswerBuilder, ttl: u32) -> AnswerBuilder {
-        builder.add_answer(&self.name, QueryClass::IN, ttl, &RRData::TXT(&self.txt))
     }
 }

@@ -4,25 +4,27 @@ extern crate net2;
 extern crate mio;
 extern crate rotor;
 extern crate libc;
-extern crate eventual;
 extern crate rand;
 extern crate multimap;
 extern crate nix;
 extern crate byteorder;
 
 mod fsm;
-use fsm::{FSM, Command, ServiceData};
+use fsm::{FSM, Command, DEFAULT_TTL};
 
+mod services;
+use services::{Services, SharedServices, ServiceData};
 mod net;
 
 use std::sync::mpsc::Sender;
 use std::io;
 use std::thread;
-use eventual::{Async, Future};
 use dns_parser::Name;
+use std::sync::{Arc, Mutex};
 
 pub struct Responder {
     handle: Option<thread::JoinHandle<()>>,
+    services: SharedServices,
     tx: Sender<Command>,
     notifier: rotor::Notifier,
 }
@@ -34,7 +36,12 @@ pub struct Service<'a> {
 
 impl Responder {
     pub fn new() -> io::Result<Responder> {
-        let (fsm, tx) = try!(FSM::new());
+        let mut hostname = try!(net::gethostname());
+        if !hostname.ends_with(".local") {
+            hostname.push_str(".local");
+        }
+        let services = Arc::new(Mutex::new(Services::new(hostname)));
+        let (fsm, tx) = try!(FSM::new(&services));
 
         let mut config = rotor::Config::new();
         config.slab_capacity(32);
@@ -58,14 +65,13 @@ impl Responder {
 
         Ok(Responder {
             handle: Some(handle),
+            services: services,
             tx: tx,
             notifier: notifier.unwrap(),
         })
     }
 
     pub fn register(&self, svc_type: String, svc_name: String, port: u16, txt: &[&str]) -> Service {
-        let (complete, future) = Future::pair();
-
         let txt = if txt.is_empty() {
             vec![0]
         } else {
@@ -84,14 +90,20 @@ impl Responder {
             port: port,
             txt: txt,
         };
+        self.send_unsolicited(svc.clone(), DEFAULT_TTL, true);
 
-        self.send(Command::Register(svc, complete));
+        let id = self.services
+            .lock().unwrap()
+            .register(svc);
 
-        let id = future.await().unwrap();
         Service {
             responder: self,
             id: id,
         }
+    }
+
+    fn send_unsolicited(&self, svc: ServiceData, ttl: u32, include_ip: bool) {
+        self.send(Command::SendUnsolicited(svc, ttl, include_ip));
     }
 
     fn send(&self, cmd: Command) {
@@ -109,6 +121,9 @@ impl Drop for Responder {
 
 impl <'a> Drop for Service<'a> {
     fn drop(&mut self) {
-        self.responder.send(Command::Unregister(self.id));
+        let svc = self.responder.services
+            .lock().unwrap()
+            .unregister(self.id);
+        self.responder.send_unsolicited(svc, 0, false);
     }
 }
