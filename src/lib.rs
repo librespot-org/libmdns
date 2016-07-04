@@ -10,7 +10,7 @@ extern crate nix;
 extern crate byteorder;
 
 mod fsm;
-use fsm::{FSM, Command, DEFAULT_TTL};
+use fsm::{AddressFamily, FSM, Command, DEFAULT_TTL};
 
 mod services;
 use services::{Services, SharedServices, ServiceData};
@@ -25,8 +25,7 @@ use std::sync::{Arc, Mutex};
 pub struct Responder {
     handle: Option<thread::JoinHandle<()>>,
     services: SharedServices,
-    tx: Sender<Command>,
-    notifier: rotor::Notifier,
+    txs_notifiers: Vec<(Sender<Command>, rotor::Notifier)>,
 }
 
 pub struct Service<'a> {
@@ -36,25 +35,36 @@ pub struct Service<'a> {
 
 impl Responder {
     pub fn new() -> io::Result<Responder> {
+        let txs_notifiers = Arc::new(Mutex::new(Vec::with_capacity(2)));
+
         let mut hostname = try!(net::gethostname());
         if !hostname.ends_with(".local") {
             hostname.push_str(".local");
         }
         let services = Arc::new(Mutex::new(Services::new(hostname)));
-        let (fsm, tx) = try!(FSM::new(&services));
 
         let mut config = rotor::Config::new();
         config.slab_capacity(32);
         config.mio().notify_capacity(32);
 
-        let mut notifier = None;
         let mut loop_ = rotor::Loop::new(&config).unwrap();
         {
-            let notifier = &mut notifier;
-
+            let (fsm, tx) = try!(FSM::new(AddressFamily::Inet, &services));
+            let txs_notifiers = txs_notifiers.clone();
             loop_.add_machine_with(move |scope| {
                 fsm.register(scope).unwrap();
-                *notifier = Some(scope.notifier());
+                txs_notifiers.lock().unwrap()
+                    .push((tx, scope.notifier()));
+                rotor::Response::ok(fsm)
+            }).unwrap();
+        }
+        {
+            let (fsm, tx) = try!(FSM::new(AddressFamily::Inet6, &services));
+            let txs_notifiers = txs_notifiers.clone();
+            loop_.add_machine_with(move |scope| {
+                fsm.register(scope).unwrap();
+                txs_notifiers.lock().unwrap()
+                    .push((tx, scope.notifier()));
                 rotor::Response::ok(fsm)
             }).unwrap();
         }
@@ -66,8 +76,8 @@ impl Responder {
         Ok(Responder {
             handle: Some(handle),
             services: services,
-            tx: tx,
-            notifier: notifier.unwrap(),
+            txs_notifiers: Arc::try_unwrap(txs_notifiers).unwrap()
+                .into_inner().unwrap()
         })
     }
 
@@ -107,8 +117,10 @@ impl Responder {
     }
 
     fn send(&self, cmd: Command) {
-        self.tx.send(cmd).expect("responder died");
-        self.notifier.wakeup().unwrap();
+        for &(ref tx, ref notifier) in self.txs_notifiers.iter() {
+            tx.send(cmd.clone()).expect("responder died");
+            notifier.wakeup().unwrap();
+        }
     }
 }
 

@@ -3,7 +3,7 @@ use mio;
 use mio::{EventSet, PollOpt};
 use mio::udp::UdpSocket;
 use rotor::{self, GenericScope, Scope, void};
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::io;
 use std::io::ErrorKind::Interrupted;
 use std::sync::mpsc::{channel, Sender, Receiver, TryRecvError};
@@ -11,19 +11,47 @@ use net;
 use services::{SharedServices, ServiceData};
 
 const MDNS_PORT : u16 = 5353;
-#[allow(non_snake_case)]
-pub fn MDNS_GROUP() -> IpAddr {
-    IpAddr::V4(Ipv4Addr::new(224,0,0,251))
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum AddressFamily {
+    Inet,
+    Inet6,
 }
-#[allow(non_snake_case)]
-pub fn ANY_ADDR() -> IpAddr {
-    IpAddr::V4(Ipv4Addr::new(0,0,0,0))
+
+impl AddressFamily {
+    fn udp_socket(&self) -> Result<UdpSocket, io::Error> {
+        match self {
+            &AddressFamily::Inet =>
+                UdpSocket::v4(),
+            &AddressFamily::Inet6 =>
+                UdpSocket::v6(),
+        }
+    }
+
+    fn mdns_group(&self) -> IpAddr {
+        match self {
+            &AddressFamily::Inet =>
+                IpAddr::V4(Ipv4Addr::new(224,0,0,251)),
+            &AddressFamily::Inet6 =>
+                IpAddr::V6(Ipv6Addr::new(0xff02,0,0,0,0,0,0,0xfb)),
+        }
+    }
+
+    fn any_addr(&self) -> IpAddr {
+        match self {
+            &AddressFamily::Inet =>
+                IpAddr::V4(Ipv4Addr::new(0,0,0,0)),
+            &AddressFamily::Inet6 =>
+                IpAddr::V6(Ipv6Addr::new(0,0,0,0,0,0,0,0)),
+        }
+    }
 }
 
 pub const DEFAULT_TTL : u32 = 60;
 
 pub type AnswerBuilder = dns_parser::Builder<dns_parser::Answers>;
 
+#[derive(Clone)]
 pub enum Command {
     SendUnsolicited(ServiceData, u32, bool),
     Shutdown,
@@ -31,20 +59,21 @@ pub enum Command {
 
 
 pub struct FSM {
+    af: AddressFamily,
     socket: UdpSocket,
     rx: Receiver<Command>,
     services: SharedServices,
 }
 
 impl FSM {
-    pub fn new(services: &SharedServices) -> io::Result<(FSM, Sender<Command>)> {
-        let socket = try!(UdpSocket::v4());
+    pub fn new(af: AddressFamily, services: &SharedServices) -> io::Result<(FSM, Sender<Command>)> {
+        let socket = try!(af.udp_socket());
 
         net::set_reuse_addr(&socket, true);
         net::set_reuse_port(&socket, true);
 
-        try!(socket.bind(&SocketAddr::new(ANY_ADDR(), MDNS_PORT)));
-        let group = match MDNS_GROUP() {
+        try!(socket.bind(&SocketAddr::new(af.any_addr(), MDNS_PORT)));
+        let group = match af.mdns_group() {
             IpAddr::V4(ip) => mio::IpAddr::V4(ip),
             IpAddr::V6(ip) => mio::IpAddr::V6(ip),
         };
@@ -52,6 +81,7 @@ impl FSM {
 
         let (tx, rx) = channel();
         let fsm = FSM {
+            af: af,
             socket: socket,
             rx: rx,
             services: services.clone(),
@@ -119,7 +149,7 @@ impl FSM {
 
         if !multicast_builder.is_empty() {
             let response = multicast_builder.build().unwrap_or_else(|x| x);
-            try!(self.socket.send_to(&response, &SocketAddr::new(MDNS_GROUP(), MDNS_PORT)));
+            try!(self.socket.send_to(&response, &SocketAddr::new(self.af.mdns_group(), MDNS_PORT)));
         }
 
         if !unicast_builder.is_empty() {
@@ -174,13 +204,13 @@ impl FSM {
             }
 
             match iface.ip() {
-                Some(IpAddr::V4(ip)) => {
+                Some(IpAddr::V4(ip)) if self.af == AddressFamily::Inet => {
                     builder = builder.add_answer(hostname, QueryClass::IN, ttl, &RRData::A(ip))
                 }
-                Some(IpAddr::V6(ip)) => {
+                Some(IpAddr::V6(ip)) if self.af == AddressFamily::Inet6 => {
                     builder = builder.add_answer(hostname, QueryClass::IN, ttl, &RRData::AAAA(ip))
                 }
-                None => ()
+                _ => ()
             }
         }
 
@@ -202,7 +232,7 @@ impl FSM {
 
         if !builder.is_empty() {
             let response = builder.build().unwrap_or_else(|x| x);
-            try!(self.socket.send_to(&response, &SocketAddr::new(MDNS_GROUP(), MDNS_PORT)));
+            try!(self.socket.send_to(&response, &SocketAddr::new(self.af.mdns_group(), MDNS_PORT)));
         }
 
         Ok(())
