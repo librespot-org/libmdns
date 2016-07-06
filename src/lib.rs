@@ -113,7 +113,11 @@ impl Responder {
     }
 
     fn send_unsolicited(&self, svc: ServiceData, ttl: u32, include_ip: bool) {
-        self.send(Command::SendUnsolicited(svc, ttl, include_ip));
+        self.send(Command::SendUnsolicited {
+            svc: svc,
+            ttl: ttl,
+            include_ip: include_ip,
+        });
     }
 
     fn send(&self, cmd: Command) {

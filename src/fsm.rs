@@ -53,7 +53,11 @@ pub type AnswerBuilder = dns_parser::Builder<dns_parser::Answers>;
 
 #[derive(Clone)]
 pub enum Command {
-    SendUnsolicited(ServiceData, u32, bool),
+    SendUnsolicited {
+        svc: ServiceData,
+        ttl: u32,
+        include_ip: bool
+    },
     Shutdown,
 }
 
@@ -267,7 +271,7 @@ impl rotor::Machine for FSM {
                     scope.shutdown_loop();
                     return rotor::Response::done();
                 }
-                Ok(Command::SendUnsolicited(svc, ttl, include_ip)) => {
+                Ok(Command::SendUnsolicited { svc, ttl, include_ip }) => {
                     match self.send_unsolicited(&svc, ttl, include_ip) {
                         Ok(_) => (),
                         Err(e) => {
