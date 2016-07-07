@@ -10,7 +10,7 @@ pub type AnswerBuilder = dns_parser::Builder<dns_parser::Answers>;
 pub type Services = Arc<RwLock<ServicesInner>>;
 
 pub struct ServicesInner {
-    pub hostname: Name<'static>,
+    hostname: Name<'static>,
     /// main index
     pub by_id: HashMap<usize, ServiceData>,
     /// maps to id
@@ -27,6 +27,10 @@ impl ServicesInner {
             by_type: MultiMap::new(),
             by_name: HashMap::new(),
         }
+    }
+
+    pub fn get_hostname(&self) -> &Name<'static> {
+        &self.hostname
     }
 
     pub fn register(&mut self, svc: ServiceData) -> usize {

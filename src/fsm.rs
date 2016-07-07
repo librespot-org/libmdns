@@ -170,23 +170,23 @@ impl FSM {
         match question.qtype {
             QueryType::A |
             QueryType::AAAA |
-            QueryType::All if question.qname == services.hostname => {
-                builder = self.add_ip_rr(&services.hostname, builder, DEFAULT_TTL);
+            QueryType::All if question.qname == *services.get_hostname() => {
+                builder = self.add_ip_rr(services.get_hostname(), builder, DEFAULT_TTL);
             }
             QueryType::PTR => {
                 for id in services.by_type.get_vec(&question.qname).unwrap_or(&vec![]) {
                     let svc = services.by_id.get(id).expect("missing service");
                     builder = svc.add_ptr_rr(builder, DEFAULT_TTL);
-                    builder = svc.add_srv_rr(&services.hostname, builder, DEFAULT_TTL);
+                    builder = svc.add_srv_rr(services.get_hostname(), builder, DEFAULT_TTL);
                     builder = svc.add_txt_rr(builder, DEFAULT_TTL);
-                    builder = self.add_ip_rr(&services.hostname, builder, DEFAULT_TTL);
+                    builder = self.add_ip_rr(services.get_hostname(), builder, DEFAULT_TTL);
                 }
             }
             QueryType::SRV => {
                 if let Some(id) = services.by_name.get(&question.qname) {
                     let svc = services.by_id.get(id).expect("missing service");
-                    builder = svc.add_srv_rr(&services.hostname, builder, DEFAULT_TTL);
-                    builder = self.add_ip_rr(&services.hostname, builder, DEFAULT_TTL);
+                    builder = svc.add_srv_rr(services.get_hostname(), builder, DEFAULT_TTL);
+                    builder = self.add_ip_rr(services.get_hostname(), builder, DEFAULT_TTL);
                 }
             }
             QueryType::TXT => {
@@ -228,10 +228,10 @@ impl FSM {
         let services = self.services.read().unwrap();
 
         builder = svc.add_ptr_rr(builder, ttl);
-        builder = svc.add_srv_rr(&services.hostname, builder, ttl);
+        builder = svc.add_srv_rr(services.get_hostname(), builder, ttl);
         builder = svc.add_txt_rr(builder, ttl);
         if include_ip {
-            builder = self.add_ip_rr(&services.hostname, builder, ttl);
+            builder = self.add_ip_rr(services.get_hostname(), builder, ttl);
         }
 
         if !builder.is_empty() {
