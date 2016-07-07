@@ -12,11 +12,11 @@ pub type Services = Arc<RwLock<ServicesInner>>;
 pub struct ServicesInner {
     hostname: Name<'static>,
     /// main index
-    pub by_id: HashMap<usize, ServiceData>,
+    by_id: HashMap<usize, ServiceData>,
     /// maps to id
-    pub by_type: MultiMap<Name<'static>, usize>,
+    by_type: MultiMap<Name<'static>, usize>,
     /// maps to id
-    pub by_name: HashMap<Name<'static>, usize>
+    by_name: HashMap<Name<'static>, usize>
 }
 
 impl ServicesInner {
@@ -31,6 +31,21 @@ impl ServicesInner {
 
     pub fn get_hostname(&self) -> &Name<'static> {
         &self.hostname
+    }
+
+    pub fn find_by_name<'a>(&'a self, name: &'a Name<'a>) -> Option<&ServiceData> {
+        self.by_name.get(name)
+            .and_then(|id| self.by_id.get(id))
+    }
+
+    pub fn find_by_type<'a>(&'a self, ty: &'a Name<'a>) -> FindByType<'a> {
+        let ids = self.by_type.get_vec(ty)
+            .map(|ids| &ids[..])
+            .unwrap_or(&[]);
+        FindByType {
+            services: self,
+            ids: ids
+        }
     }
 
     pub fn register(&mut self, svc: ServiceData) -> usize {
@@ -68,6 +83,26 @@ impl ServicesInner {
         svc
     }
 }
+
+pub struct FindByType<'a> {
+    services: &'a ServicesInner,
+    ids: &'a [usize],
+}
+
+impl<'a> Iterator for FindByType<'a> {
+    type Item = &'a ServiceData;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.ids.split_first() {
+            Some((id, rest)) => {
+                self.ids = rest;
+                self.services.by_id.get(id)
+            }
+            None => None
+        }
+    }
+}
+
 
 #[derive(Clone)]
 pub struct ServiceData {

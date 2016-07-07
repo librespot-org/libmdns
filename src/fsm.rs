@@ -174,8 +174,7 @@ impl FSM {
                 builder = self.add_ip_rr(services.get_hostname(), builder, DEFAULT_TTL);
             }
             QueryType::PTR => {
-                for id in services.by_type.get_vec(&question.qname).unwrap_or(&vec![]) {
-                    let svc = services.by_id.get(id).expect("missing service");
+                for svc in services.find_by_type(&question.qname) {
                     builder = svc.add_ptr_rr(builder, DEFAULT_TTL);
                     builder = svc.add_srv_rr(services.get_hostname(), builder, DEFAULT_TTL);
                     builder = svc.add_txt_rr(builder, DEFAULT_TTL);
@@ -183,15 +182,13 @@ impl FSM {
                 }
             }
             QueryType::SRV => {
-                if let Some(id) = services.by_name.get(&question.qname) {
-                    let svc = services.by_id.get(id).expect("missing service");
+                if let Some(svc) = services.find_by_name(&question.qname) {
                     builder = svc.add_srv_rr(services.get_hostname(), builder, DEFAULT_TTL);
                     builder = self.add_ip_rr(services.get_hostname(), builder, DEFAULT_TTL);
                 }
             }
             QueryType::TXT => {
-                if let Some(id) = services.by_name.get(&question.qname) {
-                    let svc = services.by_id.get(id).expect("missing service");
+                if let Some(svc) = services.find_by_name(&question.qname) {
                     builder = svc.add_txt_rr(builder, DEFAULT_TTL);
                 }
             }
