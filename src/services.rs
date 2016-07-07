@@ -7,6 +7,7 @@ use dns_parser::{self, QueryClass, Name, RRData};
 pub type AnswerBuilder = dns_parser::Builder<dns_parser::Answers>;
 
 
+/// A collection of registered services is shared between threads.
 pub type Services = Arc<RwLock<ServicesInner>>;
 
 pub struct ServicesInner {
@@ -84,6 +85,7 @@ impl ServicesInner {
     }
 }
 
+/// Returned by [`ServicesInner.find_by_type`](struct.ServicesInner.html#method.find_by_type)
 pub struct FindByType<'a> {
     services: &'a ServicesInner,
     ids: &'a [usize],
@@ -112,6 +114,7 @@ pub struct ServiceData {
     pub txt: Vec<u8>,
 }
 
+/// Packet building helpers for `fsm` to respond with `ServiceData`
 impl ServiceData {
     pub fn add_ptr_rr(&self, builder: AnswerBuilder, ttl: u32) -> AnswerBuilder {
         builder.add_answer(&self.typ, QueryClass::IN, ttl, &RRData::PTR(self.name.clone()))
