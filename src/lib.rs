@@ -13,7 +13,7 @@ mod fsm;
 use fsm::{AddressFamily, FSM, Command, DEFAULT_TTL};
 
 mod services;
-use services::{Services, SharedServices, ServiceData};
+use services::{ServicesInner, Services, ServiceData};
 mod net;
 
 use std::sync::mpsc::Sender;
@@ -24,7 +24,7 @@ use std::sync::{Arc, Mutex, RwLock};
 
 pub struct Responder {
     handle: Option<thread::JoinHandle<()>>,
-    services: SharedServices,
+    services: Services,
     txs_notifiers: Vec<(Sender<Command>, rotor::Notifier)>,
 }
 
@@ -41,7 +41,7 @@ impl Responder {
         if !hostname.ends_with(".local") {
             hostname.push_str(".local");
         }
-        let services = Arc::new(RwLock::new(Services::new(hostname)));
+        let services = Arc::new(RwLock::new(ServicesInner::new(hostname)));
 
         let mut config = rotor::Config::new();
         config.slab_capacity(32);

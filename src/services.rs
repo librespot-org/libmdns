@@ -7,9 +7,9 @@ use dns_parser::{self, QueryClass, Name, RRData};
 pub type AnswerBuilder = dns_parser::Builder<dns_parser::Answers>;
 
 
-pub type SharedServices = Arc<RwLock<Services>>;
+pub type Services = Arc<RwLock<ServicesInner>>;
 
-pub struct Services {
+pub struct ServicesInner {
     pub hostname: Name<'static>,
     /// main index
     pub by_id: HashMap<usize, ServiceData>,
@@ -19,9 +19,9 @@ pub struct Services {
     pub by_name: HashMap<Name<'static>, usize>
 }
 
-impl Services {
+impl ServicesInner {
     pub fn new(hostname: String) -> Self {
-        Services {
+        ServicesInner {
             hostname: Name::from_str(hostname).unwrap(),
             by_id: HashMap::new(),
             by_type: MultiMap::new(),

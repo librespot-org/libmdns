@@ -8,7 +8,7 @@ use std::io;
 use std::io::ErrorKind::Interrupted;
 use std::sync::mpsc::{channel, Sender, Receiver, TryRecvError};
 use net;
-use services::{SharedServices, ServiceData};
+use services::{Services, ServiceData};
 
 const MDNS_PORT : u16 = 5353;
 
@@ -66,11 +66,11 @@ pub struct FSM {
     af: AddressFamily,
     socket: UdpSocket,
     rx: Receiver<Command>,
-    services: SharedServices,
+    services: Services,
 }
 
 impl FSM {
-    pub fn new(af: AddressFamily, services: &SharedServices) -> io::Result<(FSM, Sender<Command>)> {
+    pub fn new(af: AddressFamily, services: &Services) -> io::Result<(FSM, Sender<Command>)> {
         let socket = try!(af.udp_socket());
 
         net::set_reuse_addr(&socket, true);
