@@ -165,7 +165,7 @@ impl FSM {
     }
 
     fn handle_question(&self, question: &dns_parser::Question, mut builder: AnswerBuilder) -> AnswerBuilder {
-        let services = self.services.lock().unwrap();
+        let services = self.services.read().unwrap();
 
         match question.qtype {
             QueryType::A |
@@ -225,7 +225,7 @@ impl FSM {
         let mut builder = dns_parser::Builder::new_response(0, false).move_to::<dns_parser::Answers>();
         builder.set_max_size(None);
 
-        let services = self.services.lock().unwrap();
+        let services = self.services.read().unwrap();
 
         builder = svc.add_ptr_rr(builder, ttl);
         builder = svc.add_srv_rr(&services.hostname, builder, ttl);

@@ -20,7 +20,7 @@ use std::sync::mpsc::Sender;
 use std::io;
 use std::thread;
 use dns_parser::Name;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 
 pub struct Responder {
     handle: Option<thread::JoinHandle<()>>,
@@ -41,7 +41,7 @@ impl Responder {
         if !hostname.ends_with(".local") {
             hostname.push_str(".local");
         }
-        let services = Arc::new(Mutex::new(Services::new(hostname)));
+        let services = Arc::new(RwLock::new(Services::new(hostname)));
 
         let mut config = rotor::Config::new();
         config.slab_capacity(32);
@@ -103,7 +103,7 @@ impl Responder {
         self.send_unsolicited(svc.clone(), DEFAULT_TTL, true);
 
         let id = self.services
-            .lock().unwrap()
+            .write().unwrap()
             .register(svc);
 
         Service {
@@ -138,7 +138,7 @@ impl Drop for Responder {
 impl <'a> Drop for Service<'a> {
     fn drop(&mut self) {
         let svc = self.responder.services
-            .lock().unwrap()
+            .write().unwrap()
             .unregister(self.id);
         self.responder.send_unsolicited(svc, 0, false);
     }

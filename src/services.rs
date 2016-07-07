@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 use std::collections::HashMap;
 use multimap::MultiMap;
 use rand::{Rng, thread_rng};
@@ -7,7 +7,7 @@ use dns_parser::{self, QueryClass, Name, RRData};
 pub type AnswerBuilder = dns_parser::Builder<dns_parser::Answers>;
 
 
-pub type SharedServices = Arc<Mutex<Services>>;
+pub type SharedServices = Arc<RwLock<Services>>;
 
 pub struct Services {
     pub hostname: Name<'static>,
