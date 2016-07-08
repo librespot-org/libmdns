@@ -10,7 +10,6 @@ license = "MIT"
 
 [dependencies]
 byteorder  = "0.5"
-eventual   = "0.1"
 libc       = "0.2"
 log        = "0.3"
 mio        = "0.5"
