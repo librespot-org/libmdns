@@ -48,25 +48,29 @@ impl Responder {
         config.mio().notify_capacity(32);
 
         let mut loop_ = rotor::Loop::new(&config).unwrap();
-        {
-            let (fsm, tx) = try!(FSM::new(AddressFamily::Inet, &services));
-            let txs_notifiers = txs_notifiers.clone();
-            loop_.add_machine_with(move |scope| {
-                fsm.register(scope).unwrap();
-                txs_notifiers.lock().unwrap()
-                    .push((tx, scope.notifier()));
-                rotor::Response::ok(fsm)
-            }).unwrap();
+        match FSM::new(AddressFamily::Inet, &services) {
+            Ok((fsm, tx)) => {
+                let txs_notifiers = txs_notifiers.clone();
+                loop_.add_machine_with(move |scope| {
+                    fsm.register(scope).unwrap();
+                    txs_notifiers.lock().unwrap()
+                        .push((tx, scope.notifier()));
+                    rotor::Response::ok(fsm)
+                }).unwrap();
+            },
+            Err(e) => warn!("Error creating IPv4 UDP socket for mDNS: {}", e)
         }
-        {
-            let (fsm, tx) = try!(FSM::new(AddressFamily::Inet6, &services));
-            let txs_notifiers = txs_notifiers.clone();
-            loop_.add_machine_with(move |scope| {
-                fsm.register(scope).unwrap();
-                txs_notifiers.lock().unwrap()
-                    .push((tx, scope.notifier()));
-                rotor::Response::ok(fsm)
-            }).unwrap();
+        match FSM::new(AddressFamily::Inet6, &services) {
+            Ok((fsm, tx)) => {
+                let txs_notifiers = txs_notifiers.clone();
+                loop_.add_machine_with(move |scope| {
+                    fsm.register(scope).unwrap();
+                    txs_notifiers.lock().unwrap()
+                        .push((tx, scope.notifier()));
+                    rotor::Response::ok(fsm)
+                }).unwrap();
+            },
+            Err(e) => warn!("Error creating IPv6 UDP socket for mDNS: {}", e)
         }
 
         let handle = try!(thread::Builder::new().name("mdns-responder".to_owned()).spawn(move || {
