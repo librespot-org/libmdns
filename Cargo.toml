@@ -19,7 +19,7 @@ nix        = "0.5"
 rand       = "0.3"
 rotor      = "0.6"
 
-dns-parser = { git = "http://github.com/plietar/dns-parser" }
+dns-parser = { git = "https://github.com/plietar/dns-parser" }
 
 [dev-dependencies]
 env_logger = "0.3"
