@@ -1,5 +1,6 @@
 use std::sync::{Arc, RwLock};
 use std::collections::HashMap;
+use std::slice;
 use multimap::MultiMap;
 use rand::{Rng, thread_rng};
 use dns_parser::{self, QueryClass, Name, RRData};
@@ -41,11 +42,11 @@ impl ServicesInner {
 
     pub fn find_by_type<'a>(&'a self, ty: &'a Name<'a>) -> FindByType<'a> {
         let ids = self.by_type.get_vec(ty)
-            .map(|ids| &ids[..])
-            .unwrap_or(&[]);
+                              .map(|ids| ids.iter());
+
         FindByType {
             services: self,
-            ids: ids
+            ids: ids,
         }
     }
 
@@ -88,20 +89,19 @@ impl ServicesInner {
 /// Returned by [`ServicesInner.find_by_type`](struct.ServicesInner.html#method.find_by_type)
 pub struct FindByType<'a> {
     services: &'a ServicesInner,
-    ids: &'a [usize],
+    ids: Option<slice::Iter<'a, usize>>,
 }
 
 impl<'a> Iterator for FindByType<'a> {
     type Item = &'a ServiceData;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.ids.split_first() {
-            Some((id, rest)) => {
-                self.ids = rest;
-                self.services.by_id.get(id)
-            }
-            None => None
-        }
+        self.ids.as_mut()
+            .and_then(Iterator::next)
+            .map(|id| {
+                let svc = self.services.by_id.get(id);
+                svc.expect("missing service")
+            })
     }
 }
 
