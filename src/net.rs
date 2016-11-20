@@ -1,7 +1,5 @@
 use libc::{self, c_char, c_int, c_uint, size_t};
 use std::io;
-use std::os::unix::io::AsRawFd;
-use std::mem;
 use std::ptr::null_mut;
 use std::net::{IpAddr, Ipv6Addr, SocketAddr};
 use byteorder::{BigEndian, ByteOrder};
@@ -24,24 +22,6 @@ pub fn gethostname() -> io::Result<String> {
 
         Ok(String::from_utf8_lossy(&name).into_owned())
     }
-}
-
-pub fn set_socket_opt<T, S: AsRawFd>(s: &S, optname: c_int, val: &T) {
-    let fd = s.as_raw_fd();
-    let ptr = val as *const T as *const libc::c_void;
-    let size = mem::size_of::<T>() as libc::socklen_t;
-
-    unsafe {
-        libc::setsockopt(fd, libc::SOL_SOCKET, optname, ptr, size);
-    }
-}
-
-pub fn set_reuse_addr<T: AsRawFd>(s: &T, val: bool) {
-    set_socket_opt(s, libc::SO_REUSEADDR, &(val as libc::c_int));
-}
-
-pub fn set_reuse_port<T: AsRawFd>(s: &T, val: bool) {
-    set_socket_opt(s, libc::SO_REUSEPORT, &(val as libc::c_int));
 }
 
 pub struct GetIfAddrs(*mut libc::ifaddrs, *mut libc::ifaddrs);

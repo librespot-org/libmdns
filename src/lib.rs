@@ -1,90 +1,113 @@
-extern crate dns_parser;
 #[macro_use] extern crate log;
-extern crate net2;
-extern crate mio;
-extern crate rotor;
-extern crate libc;
-extern crate rand;
-extern crate multimap;
-extern crate nix;
+
 extern crate byteorder;
+extern crate dns_parser;
+extern crate futures;
+extern crate libc;
+extern crate multimap;
+extern crate net2;
+extern crate nix;
+extern crate rand;
+extern crate tokio_core as tokio;
 
-mod fsm;
-use fsm::{AddressFamily, FSM, Command, DEFAULT_TTL};
-
-mod services;
-use services::{ServicesInner, Services, ServiceData};
-mod net;
-
-use std::sync::mpsc::Sender;
+use dns_parser::Name;
+use futures::{BoxFuture, Future};
+use futures::sync::mpsc;
 use std::io;
 use std::thread;
-use dns_parser::Name;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
+use std::cell::RefCell;
+use tokio::reactor::{Handle, Core};
+
+mod address_family;
+mod fsm;
+mod services;
+mod net;
+
+use address_family::{Inet, Inet6};
+use services::{ServicesInner, Services, ServiceData};
+use fsm::{Command, FSM};
+
+const DEFAULT_TTL : u32 = 60;
+const MDNS_PORT : u16 = 5353;
 
 pub struct Responder {
-    handle: Option<thread::JoinHandle<()>>,
     services: Services,
-    txs_notifiers: Vec<(Sender<Command>, rotor::Notifier)>,
+    commands: RefCell<CommandSender>,
+    shutdown: Arc<Shutdown>,
 }
 
-pub struct Service<'a> {
-    responder: &'a Responder,
+pub struct Service {
     id: usize,
+    services: Services,
+    commands: CommandSender,
+    _shutdown: Arc<Shutdown>,
 }
 
 impl Responder {
-    pub fn new() -> io::Result<Responder> {
-        let txs_notifiers = Arc::new(Mutex::new(Vec::with_capacity(2)));
+    fn setup_core() -> io::Result<(Core, BoxFuture<(), io::Error>, Responder)> {
+        let core = Core::new().unwrap();
+        let (responder, task) = Self::with_handle(&core.handle()).unwrap();
+        Ok((core, task, responder))
+    }
 
+    pub fn new() -> io::Result<Responder> {
+        let (tx, rx) = std::sync::mpsc::sync_channel(0);
+        thread::Builder::new()
+            .name("mdns-responder".to_owned())
+            .spawn(move || {
+                match Self::setup_core() {
+                    Ok((mut core, task, responder)) => {
+                        tx.send(Ok(responder)).unwrap();
+                        core.run(task).unwrap();
+                    }
+                    Err(err) => {
+                        tx.send(Err(err)).unwrap();
+                    }
+                }
+            }).unwrap();
+
+        rx.recv().unwrap()
+    }
+
+    pub fn with_handle(handle: &Handle) -> io::Result<(Responder, BoxFuture<(), io::Error>)> {
         let mut hostname = try!(net::gethostname());
         if !hostname.ends_with(".local") {
             hostname.push_str(".local");
         }
+
         let services = Arc::new(RwLock::new(ServicesInner::new(hostname)));
 
-        let mut config = rotor::Config::new();
-        config.slab_capacity(32);
-        config.mio().notify_capacity(32);
+        let v4 = FSM::<Inet>::new(handle, &services);
+        let v6 = FSM::<Inet6>::new(handle, &services);
 
-        let mut loop_ = rotor::Loop::new(&config).unwrap();
-        match FSM::new(AddressFamily::Inet, &services) {
-            Ok((fsm, tx)) => {
-                let txs_notifiers = txs_notifiers.clone();
-                loop_.add_machine_with(move |scope| {
-                    fsm.register(scope).unwrap();
-                    txs_notifiers.lock().unwrap()
-                        .push((tx, scope.notifier()));
-                    rotor::Response::ok(fsm)
-                }).unwrap();
-            },
-            Err(e) => warn!("Error creating IPv4 UDP socket for mDNS: {}", e)
-        }
-        match FSM::new(AddressFamily::Inet6, &services) {
-            Ok((fsm, tx)) => {
-                let txs_notifiers = txs_notifiers.clone();
-                loop_.add_machine_with(move |scope| {
-                    fsm.register(scope).unwrap();
-                    txs_notifiers.lock().unwrap()
-                        .push((tx, scope.notifier()));
-                    rotor::Response::ok(fsm)
-                }).unwrap();
-            },
-            Err(e) => warn!("Error creating IPv6 UDP socket for mDNS: {}", e)
-        }
+        let (task, commands) = match (v4, v6) {
+            (Ok((v4_task, v4_command)), Ok((v6_task, v6_command))) => {
+                let task = v4_task.join(v6_task).map(|((),())| ()).boxed();
+                let commands = vec![v4_command, v6_command];
+                (task, commands)
+            }
 
-        let handle = try!(thread::Builder::new().name("mdns-responder".to_owned()).spawn(move || {
-            loop_.run(()).unwrap();
-        }));
+            (Ok((v4_task, v4_command)), Err(err)) => {
+                warn!("Failed to register IPv6 receiver: {:?}", err);
+                (v4_task.boxed(), vec![v4_command])
+            }
 
-        Ok(Responder {
-            handle: Some(handle),
+            (Err(err), _) => return Err(err),
+        };
+
+        let commands = CommandSender(commands);
+        let responder = Responder {
             services: services,
-            txs_notifiers: Arc::try_unwrap(txs_notifiers).unwrap()
-                .into_inner().unwrap()
-        })
-    }
+            commands: RefCell::new(commands.clone()),
+            shutdown: Arc::new(Shutdown(commands)),
+        };
 
+        Ok((responder, task.boxed()))
+    }
+}
+
+impl Responder {
     pub fn register(&self, svc_type: String, svc_name: String, port: u16, txt: &[&str]) -> Service {
         let txt = if txt.is_empty() {
             vec![0]
@@ -104,19 +127,51 @@ impl Responder {
             port: port,
             txt: txt,
         };
-        self.send_unsolicited(svc.clone(), DEFAULT_TTL, true);
+
+        self.commands.borrow_mut()
+            .send_unsolicited(svc.clone(), DEFAULT_TTL, true);
 
         let id = self.services
             .write().unwrap()
             .register(svc);
 
         Service {
-            responder: self,
             id: id,
+            commands: self.commands.borrow().clone(),
+            services: self.services.clone(),
+            _shutdown: self.shutdown.clone(),
         }
     }
 
-    fn send_unsolicited(&self, svc: ServiceData, ttl: u32, include_ip: bool) {
+}
+
+impl Drop for Service {
+    fn drop(&mut self) {
+        let svc = self.services
+            .write().unwrap()
+            .unregister(self.id);
+        self.commands.send_unsolicited(svc, 0, false);
+    }
+}
+
+struct Shutdown(CommandSender);
+impl Drop for Shutdown {
+    fn drop(&mut self) {
+        self.0.send_shutdown();
+        // TODO wait for tasks to shutdown
+    }
+}
+
+#[derive(Clone)]
+struct CommandSender(Vec<mpsc::UnboundedSender<Command>>);
+impl CommandSender {
+    fn send(&mut self, cmd: Command) {
+        for tx in self.0.iter_mut() {
+            tx.send(cmd.clone()).expect("responder died");
+        }
+    }
+
+    fn send_unsolicited(&mut self, svc: ServiceData, ttl: u32, include_ip: bool) {
         self.send(Command::SendUnsolicited {
             svc: svc,
             ttl: ttl,
@@ -124,26 +179,7 @@ impl Responder {
         });
     }
 
-    fn send(&self, cmd: Command) {
-        for &(ref tx, ref notifier) in self.txs_notifiers.iter() {
-            tx.send(cmd.clone()).expect("responder died");
-            notifier.wakeup().unwrap();
-        }
-    }
-}
-
-impl Drop for Responder {
-    fn drop(&mut self) {
+    fn send_shutdown(&mut self) {
         self.send(Command::Shutdown);
-        self.handle.take().map(|h| h.join());
-    }
-}
-
-impl <'a> Drop for Service<'a> {
-    fn drop(&mut self) {
-        let svc = self.responder.services
-            .write().unwrap()
-            .unregister(self.id);
-        self.responder.send_unsolicited(svc, 0, false);
     }
 }

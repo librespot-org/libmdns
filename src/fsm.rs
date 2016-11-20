@@ -1,57 +1,22 @@
 use dns_parser::{self, QueryClass, QueryType, Name, RRData};
-use mio;
-use mio::{EventSet, PollOpt};
-use mio::udp::UdpSocket;
-use rotor::{self, GenericScope, Scope, void};
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::collections::VecDeque;
 use std::io;
-use std::io::ErrorKind::Interrupted;
-use std::sync::mpsc::{channel, Sender, Receiver, TryRecvError};
+use std::io::ErrorKind::WouldBlock;
+use std::marker::PhantomData;
+use std::net::{IpAddr, SocketAddr};
+use futures::{Poll, Async, Future, Stream};
+use futures::sync::mpsc;
+use tokio::net::UdpSocket;
+use tokio::reactor::Handle;
+
+use super::{DEFAULT_TTL, MDNS_PORT};
+use address_family::AddressFamily;
 use net;
 use services::{Services, ServiceData};
 
-const MDNS_PORT : u16 = 5353;
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum AddressFamily {
-    Inet,
-    Inet6,
-}
-
-impl AddressFamily {
-    fn udp_socket(&self) -> Result<UdpSocket, io::Error> {
-        match self {
-            &AddressFamily::Inet =>
-                UdpSocket::v4(),
-            &AddressFamily::Inet6 =>
-                UdpSocket::v6(),
-        }
-    }
-
-    fn mdns_group(&self) -> IpAddr {
-        match self {
-            &AddressFamily::Inet =>
-                IpAddr::V4(Ipv4Addr::new(224,0,0,251)),
-            &AddressFamily::Inet6 =>
-                IpAddr::V6(Ipv6Addr::new(0xff02,0,0,0,0,0,0,0xfb)),
-        }
-    }
-
-    fn any_addr(&self) -> IpAddr {
-        match self {
-            &AddressFamily::Inet =>
-                IpAddr::V4(Ipv4Addr::new(0,0,0,0)),
-            &AddressFamily::Inet6 =>
-                IpAddr::V6(Ipv6Addr::new(0,0,0,0,0,0,0,0)),
-        }
-    }
-}
-
-pub const DEFAULT_TTL : u32 = 60;
-
 pub type AnswerBuilder = dns_parser::Builder<dns_parser::Answers>;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Command {
     SendUnsolicited {
         svc: ServiceData,
@@ -61,50 +26,39 @@ pub enum Command {
     Shutdown,
 }
 
-
-pub struct FSM {
-    af: AddressFamily,
+pub struct FSM<AF: AddressFamily> {
     socket: UdpSocket,
-    rx: Receiver<Command>,
     services: Services,
+    commands: mpsc::UnboundedReceiver<Command>,
+    outgoing: VecDeque<(Vec<u8>, SocketAddr)>,
+    _af: PhantomData<AF>,
 }
 
-impl FSM {
-    pub fn new(af: AddressFamily, services: &Services) -> io::Result<(FSM, Sender<Command>)> {
-        let socket = try!(af.udp_socket());
+impl <AF: AddressFamily> FSM<AF> {
+    pub fn new(handle: &Handle, services: &Services)
+        -> io::Result<(FSM<AF>, mpsc::UnboundedSender<Command>)>
+    {
+        let std_socket = AF::bind()?;
+        let socket = UdpSocket::from_socket(std_socket, handle)?;
+        let (tx, rx) = mpsc::unbounded();
 
-        net::set_reuse_addr(&socket, true);
-        net::set_reuse_port(&socket, true);
-
-        try!(socket.bind(&SocketAddr::new(af.any_addr(), MDNS_PORT)));
-        let group = match af.mdns_group() {
-            IpAddr::V4(ip) => mio::IpAddr::V4(ip),
-            IpAddr::V6(ip) => mio::IpAddr::V6(ip),
-        };
-        try!(socket.join_multicast(&group));
-
-        let (tx, rx) = channel();
         let fsm = FSM {
-            af: af,
             socket: socket,
-            rx: rx,
             services: services.clone(),
+            commands: rx,
+            outgoing: VecDeque::new(),
+            _af: PhantomData,
         };
 
         Ok((fsm, tx))
     }
 
-    pub fn register<S: GenericScope>(&self, scope: &mut S) -> io::Result<()> {
-        scope.register(&self.socket, EventSet::readable(), PollOpt::level())
-    }
-
-    fn recv_packets(&self) -> io::Result<()> {
+    fn recv_packets(&mut self) -> io::Result<()> {
         let mut buf = [0u8; 4096];
         loop {
             let (bytes, addr) = match self.socket.recv_from(&mut buf) {
-                Ok(Some((bytes, addr))) => (bytes, addr),
-                Ok(None) => break,
-                Err(ref ioerr) if ioerr.kind() == Interrupted => continue,
+                Ok((bytes, addr)) => (bytes, addr),
+                Err(ref ioerr) if ioerr.kind() == WouldBlock => break,
                 Err(err) => return Err(err),
             };
 
@@ -113,27 +67,30 @@ impl FSM {
                 continue;
             }
 
-            try!(self.handle_packet(&buf[..bytes], addr));
+            self.handle_packet(&buf[..bytes], addr);
         }
         return Ok(())
     }
 
-    fn handle_packet(&self, buffer: &[u8], addr: SocketAddr) -> io::Result<()> {
+    fn handle_packet(&mut self, buffer: &[u8], addr: SocketAddr) {
+        trace!("received packet from {:?}", addr);
+
         let packet = match dns_parser::Packet::parse(buffer) {
             Ok(packet) => packet,
             Err(error) => {
                 warn!("couldn't parse packet from {:?}: {}", addr, error);
-                return Ok(());
+                return;
             }
         };
 
         if !packet.header.query {
-            return Ok(());
+            trace!("received packet from {:?} with no query", addr);
+            return;
         }
 
         if packet.header.truncated {
             warn!("dropping truncated packet from {:?}", addr);
-            return Ok(());
+            return;
         }
 
         let mut unicast_builder = dns_parser::Builder::new_response(packet.header.id, false).move_to::<dns_parser::Answers>();
@@ -153,15 +110,14 @@ impl FSM {
 
         if !multicast_builder.is_empty() {
             let response = multicast_builder.build().unwrap_or_else(|x| x);
-            try!(self.socket.send_to(&response, &SocketAddr::new(self.af.mdns_group(), MDNS_PORT)));
+            let addr = SocketAddr::new(AF::mdns_group(), MDNS_PORT);
+            self.outgoing.push_back((response, addr));
         }
 
         if !unicast_builder.is_empty() {
             let response = unicast_builder.build().unwrap_or_else(|x| x);
-            try!(self.socket.send_to(&response, &addr));
+            self.outgoing.push_back((response, addr));
         }
-
-        return Ok(());
     }
 
     fn handle_question(&self, question: &dns_parser::Question, mut builder: AnswerBuilder) -> AnswerBuilder {
@@ -169,10 +125,10 @@ impl FSM {
 
         match question.qtype {
             QueryType::A |
-            QueryType::AAAA |
-            QueryType::All if question.qname == *services.get_hostname() => {
-                builder = self.add_ip_rr(services.get_hostname(), builder, DEFAULT_TTL);
-            }
+                QueryType::AAAA |
+                QueryType::All if question.qname == *services.get_hostname() => {
+                    builder = self.add_ip_rr(services.get_hostname(), builder, DEFAULT_TTL);
+                }
             QueryType::PTR => {
                 for svc in services.find_by_type(&question.qname) {
                     builder = svc.add_ptr_rr(builder, DEFAULT_TTL);
@@ -205,10 +161,10 @@ impl FSM {
             }
 
             match iface.ip() {
-                Some(IpAddr::V4(ip)) if self.af == AddressFamily::Inet => {
+                Some(IpAddr::V4(ip)) if !AF::v6() => {
                     builder = builder.add_answer(hostname, QueryClass::IN, ttl, &RRData::A(ip))
                 }
-                Some(IpAddr::V6(ip)) if self.af == AddressFamily::Inet6 => {
+                Some(IpAddr::V6(ip)) if AF::v6() => {
                     builder = builder.add_answer(hostname, QueryClass::IN, ttl, &RRData::AAAA(ip))
                 }
                 _ => ()
@@ -218,7 +174,7 @@ impl FSM {
         builder
     }
 
-    fn send_unsolicited(&self, svc: &ServiceData, ttl: u32, include_ip: bool) -> io::Result<()> {
+    fn send_unsolicited(&mut self, svc: &ServiceData, ttl: u32, include_ip: bool) {
         let mut builder = dns_parser::Builder::new_response(0, false).move_to::<dns_parser::Answers>();
         builder.set_max_size(None);
 
@@ -233,14 +189,14 @@ impl FSM {
 
         if !builder.is_empty() {
             let response = builder.build().unwrap_or_else(|x| x);
-            try!(self.socket.send_to(&response, &SocketAddr::new(self.af.mdns_group(), MDNS_PORT)));
+            let addr = SocketAddr::new(AF::mdns_group(), MDNS_PORT);
+            self.outgoing.push_back((response, addr));
         }
-
-        Ok(())
     }
 }
 
-impl rotor::Machine for FSM {
+/*
+   impl rotor::Machine for FSM {
     type Context = ();
     type Seed = void::Void;
 
@@ -289,5 +245,48 @@ impl rotor::Machine for FSM {
         }
 
         rotor::Response::ok(self)
+    }
+}
+*/
+
+impl <AF: AddressFamily> Future for FSM<AF> {
+    type Item = ();
+    type Error = io::Error;
+    fn poll(&mut self) -> Poll<(), io::Error> {
+        while let Async::Ready(cmd) = self.commands.poll().unwrap() {
+            println!("cmd={:?}", cmd);
+            match cmd {
+                Some(Command::Shutdown) => return Ok(Async::Ready(())),
+                Some(Command::SendUnsolicited { svc, ttl, include_ip }) => {
+                    self.send_unsolicited(&svc, ttl, include_ip);
+                }
+                None => {
+                    warn!("responder disconnected without shutdown");
+                    return Ok(Async::Ready(()));
+                }
+            }
+        }
+
+        while let Async::Ready(()) = self.socket.poll_read() {
+            self.recv_packets()?;
+        }
+
+        loop {
+            if let Some(&(ref response, ref addr)) = self.outgoing.front() {
+                trace!("sending packet to {:?}", addr);
+
+                match self.socket.send_to(response, addr) {
+                    Ok(_) => (),
+                    Err(ref ioerr) if ioerr.kind() == WouldBlock => break,
+                    Err(err) => warn!("error sending packet {:?}", err),
+                }
+            } else {
+                break;
+            }
+
+            self.outgoing.pop_front();
+        }
+
+        Ok(Async::NotReady)
     }
 }

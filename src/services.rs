@@ -106,7 +106,7 @@ impl<'a> Iterator for FindByType<'a> {
 }
 
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ServiceData {
     pub name: Name<'static>,
     pub typ: Name<'static>,

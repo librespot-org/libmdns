@@ -1,6 +1,6 @@
 [package]
 name = "mdns"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Paul Lietar <paul@lietar.net>"]
 
 description = "Rust mDNS responder"
@@ -9,17 +9,18 @@ readme = "README.md"
 license = "MIT"
 
 [dependencies]
-byteorder  = "0.5"
-libc       = "0.2"
-log        = "0.3"
-mio        = "0.5"
-multimap   = "0.2"
-net2       = "0.2"
-nix        = "0.5"
-rand       = "0.3"
-rotor      = "0.6"
+byteorder = "0.5"
+libc = "0.2"
+log = "0.3"
+multimap = "0.2"
+net2 = "0.2"
+nix = "0.5"
+rand = "0.3"
 
 dns-parser = { git = "https://github.com/plietar/dns-parser" }
+
+futures = { git = "https://github.com/alexcrichton/futures-rs" }
+tokio-core = { git = "https://github.com/tokio-rs/tokio-core" }
 
 [dev-dependencies]
 env_logger = "0.3"
