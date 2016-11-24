@@ -254,7 +254,6 @@ impl <AF: AddressFamily> Future for FSM<AF> {
     type Error = io::Error;
     fn poll(&mut self) -> Poll<(), io::Error> {
         while let Async::Ready(cmd) = self.commands.poll().unwrap() {
-            println!("cmd={:?}", cmd);
             match cmd {
                 Some(Command::Shutdown) => return Ok(Async::Ready(())),
                 Some(Command::SendUnsolicited { svc, ttl, include_ip }) => {
