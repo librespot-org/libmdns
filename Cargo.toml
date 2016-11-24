@@ -10,17 +10,16 @@ license = "MIT"
 
 [dependencies]
 byteorder = "0.5"
+futures = "0.1.6"
 libc = "0.2"
 log = "0.3"
 multimap = "0.2"
 net2 = "0.2"
 nix = "0.5"
 rand = "0.3"
+tokio-core = "0.1.1"
 
 dns-parser = { git = "https://github.com/plietar/dns-parser" }
-
-futures = { git = "https://github.com/alexcrichton/futures-rs" }
-tokio-core = { git = "https://github.com/tokio-rs/tokio-core" }
 
 [dev-dependencies]
 env_logger = "0.3"
