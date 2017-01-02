@@ -125,10 +125,10 @@ impl <AF: AddressFamily> FSM<AF> {
 
         match question.qtype {
             QueryType::A |
-                QueryType::AAAA |
-                QueryType::All if question.qname == *services.get_hostname() => {
-                    builder = self.add_ip_rr(services.get_hostname(), builder, DEFAULT_TTL);
-                }
+            QueryType::AAAA |
+            QueryType::All if question.qname == *services.get_hostname() => {
+                builder = self.add_ip_rr(services.get_hostname(), builder, DEFAULT_TTL);
+            }
             QueryType::PTR => {
                 for svc in services.find_by_type(&question.qname) {
                     builder = svc.add_ptr_rr(builder, DEFAULT_TTL);

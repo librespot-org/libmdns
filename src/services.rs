@@ -69,7 +69,7 @@ impl ServicesInner {
         let svc = self.by_id.remove(&id).expect("unknown service");
 
         if let Some(entries) = self.by_type.get_vec_mut(&svc.typ) {
-            entries.retain(|&e| e == id);
+            entries.retain(|&e| e != id);
         }
 
         match self.by_name.entry(svc.name.clone()) {
