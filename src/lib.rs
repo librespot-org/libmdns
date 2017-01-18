@@ -70,6 +70,15 @@ impl Responder {
         rx.recv().unwrap()
     }
 
+    pub fn spawn(handle: &Handle) -> io::Result<Responder> {
+        let (responder, task) = Responder::with_handle(handle)?;
+        handle.spawn(task.map_err(|e| {
+            warn!("mdns error {:?}", e);
+            ()
+        }));
+        Ok(responder)
+    }
+
     pub fn with_handle(handle: &Handle) -> io::Result<(Responder, BoxFuture<(), io::Error>)> {
         let mut hostname = try!(net::gethostname());
         if !hostname.ends_with(".local") {
