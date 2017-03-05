@@ -15,7 +15,7 @@ libc = "0.2"
 log = "0.3"
 multimap = "0.3"
 net2 = "0.2"
-nix = "0.7"
+nix = "0.8"
 rand = "0.3"
 tokio-core = "0.1.1"
 
