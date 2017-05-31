@@ -40,7 +40,7 @@ impl Iterator for GetIfAddrs {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.1.is_null() {
-            return None
+            None
         } else {
             unsafe {
                 let iface = Interface::new(&*self.1);
