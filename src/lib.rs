@@ -58,16 +58,16 @@ impl Responder {
             .spawn(move || {
                 match Self::setup_core() {
                     Ok((mut core, task, responder)) => {
-                        tx.send(Ok(responder)).expect("Could not write Ok to sync_channel");
-                        core.run(task).expect("Could not run task");
+                        tx.send(Ok(responder)).expect("tx responder channel closed");
+                        core.run(task).expect("mdsn thread failed");
                     }
                     Err(err) => {
-                        tx.send(Err(err)).expect("Could not write Error to sync_channel");
+                        tx.send(Err(err)).expect("tx responder channel closed");
                     }
                 }
             })?;
 
-        rx.recv().expect("Could not receive from sync_channel")
+        rx.recv().expect("rx responder channel closed")
     }
 
     pub fn spawn(handle: &Handle) -> io::Result<Responder> {
