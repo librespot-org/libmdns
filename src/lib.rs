@@ -46,8 +46,8 @@ pub struct Service {
 
 impl Responder {
     fn setup_core() -> io::Result<(Core, BoxFuture<(), io::Error>, Responder)> {
-        let core = Core::new().unwrap();
-        let (responder, task) = Self::with_handle(&core.handle()).unwrap();
+        let core = Core::new()?;
+        let (responder, task) = Self::with_handle(&core.handle())?;
         Ok((core, task, responder))
     }
 
@@ -58,16 +58,16 @@ impl Responder {
             .spawn(move || {
                 match Self::setup_core() {
                     Ok((mut core, task, responder)) => {
-                        tx.send(Ok(responder)).unwrap();
-                        core.run(task).unwrap();
+                        tx.send(Ok(responder)).expect("tx responder channel closed");
+                        core.run(task).expect("mdns thread failed");
                     }
                     Err(err) => {
-                        tx.send(Err(err)).unwrap();
+                        tx.send(Err(err)).expect("tx responder channel closed");
                     }
                 }
-            }).unwrap();
+            })?;
 
-        rx.recv().unwrap()
+        rx.recv().expect("rx responder channel closed")
     }
 
     pub fn spawn(handle: &Handle) -> io::Result<Responder> {

@@ -69,7 +69,7 @@ impl <AF: AddressFamily> FSM<AF> {
 
             self.handle_packet(&buf[..bytes], addr);
         }
-        return Ok(())
+        Ok(())
     }
 
     fn handle_packet(&mut self, buffer: &[u8], addr: SocketAddr) {
