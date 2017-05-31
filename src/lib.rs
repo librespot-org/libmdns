@@ -59,7 +59,7 @@ impl Responder {
                 match Self::setup_core() {
                     Ok((mut core, task, responder)) => {
                         tx.send(Ok(responder)).expect("tx responder channel closed");
-                        core.run(task).expect("mdsn thread failed");
+                        core.run(task).expect("mdns thread failed");
                     }
                     Err(err) => {
                         tx.send(Err(err)).expect("tx responder channel closed");
