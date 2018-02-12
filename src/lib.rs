@@ -22,6 +22,10 @@ use tokio::reactor::{Handle, Core};
 mod address_family;
 mod fsm;
 mod services;
+#[cfg(windows)]
+#[path = "netwin.rs"]
+mod net;
+#[cfg(not(windows))]
 mod net;
 
 use address_family::{Inet, Inet6};

@@ -1,4 +1,5 @@
 use net2::UdpBuilder;
+#[cfg(not(windows))]
 use net2::unix::UnixUdpBuilderExt;
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket};
@@ -10,10 +11,11 @@ pub enum Inet6 {}
 pub trait AddressFamily {
     fn bind() -> io::Result<UdpSocket> {
         let addr = SocketAddr::new(Self::any_addr(), MDNS_PORT);
-        let socket = Self::socket_builder()?
-            .reuse_address(true)?
-            .reuse_port(true)?
-            .bind(&addr)?;
+        let builder = Self::socket_builder()?;
+        builder.reuse_address(true)?;
+        #[cfg(not(windows))]
+        builder.reuse_port(true)?;
+        let socket = builder.bind(&addr)?;
         Self::join_multicast(&socket)?;
         Ok(socket)
     }
