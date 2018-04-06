@@ -19,3 +19,6 @@ extern crate mdns;
 
 [RFC 6762]: https://tools.ietf.org/html/rfc6762
 [RFC 6763]: https://tools.ietf.org/html/rfc6763
+
+## Provenance Note
+This project originally started as a fork of [plietar/rust-mdns](https://github.com/plietar/rust-mdns).

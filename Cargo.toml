@@ -1,10 +1,10 @@
 [package]
-name = "mdns"
-version = "0.2.0"
-authors = ["Paul Lietar <paul@lietar.net>"]
+name = "libmdns"
+version = "0.2.2"
+authors = ["Casey Robinson <casey@rampantmonkey.com>"]
 
-description = "Rust mDNS responder"
-repository = "https://github.com/plietar/rust-mdns"
+description = "rust mdns library"
+repository = "https://github.com/rampantmonkey/libmdns"
 readme = "README.md"
 license = "MIT"
 
@@ -18,8 +18,8 @@ net2 = "0.2"
 nix = "0.8"
 rand = "0.3"
 tokio-core = "0.1.1"
-
-dns-parser = { git = "https://github.com/plietar/dns-parser" }
+quick-error = "1.0.0"
+matches = "0.1.2"
 
 [target.'cfg(windows)'.dependencies]
 winapi = "0.2.8"

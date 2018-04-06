@@ -1,7 +1,9 @@
+#[macro_use(matches)] extern crate matches;
+#[macro_use(quick_error)] extern crate quick_error;
+
 #[macro_use] extern crate log;
 
 extern crate byteorder;
-extern crate dns_parser;
 extern crate futures;
 extern crate libc;
 extern crate multimap;
@@ -10,7 +12,6 @@ extern crate nix;
 extern crate rand;
 extern crate tokio_core as tokio;
 
-use dns_parser::Name;
 use futures::{BoxFuture, Future};
 use futures::sync::mpsc;
 use std::io;
@@ -18,6 +19,9 @@ use std::thread;
 use std::sync::{Arc, RwLock};
 use std::cell::RefCell;
 use tokio::reactor::{Handle, Core};
+
+mod dns_parser;
+use dns_parser::Name;
 
 mod address_family;
 mod fsm;
