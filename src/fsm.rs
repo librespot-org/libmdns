@@ -8,10 +8,10 @@ use futures::{Poll, Async, Future, Stream};
 use futures::sync::mpsc;
 use tokio::net::UdpSocket;
 use tokio::reactor::Handle;
+use get_if_addrs::get_if_addrs;
 
 use super::{DEFAULT_TTL, MDNS_PORT};
 use address_family::AddressFamily;
-use net;
 use services::{Services, ServiceData};
 
 pub type AnswerBuilder = dns_parser::Builder<dns_parser::Answers>;
@@ -99,6 +99,8 @@ impl <AF: AddressFamily> FSM<AF> {
         multicast_builder.set_max_size(None);
 
         for question in packet.questions {
+            debug!("received question: {:?} {}", question.qclass, question.qname);
+
             if question.qclass == QueryClass::IN || question.qclass == QueryClass::Any {
                 if question.qu {
                     unicast_builder = self.handle_question(&question, unicast_builder);
@@ -155,16 +157,25 @@ impl <AF: AddressFamily> FSM<AF> {
     }
 
     fn add_ip_rr(&self, hostname: &Name, mut builder: AnswerBuilder, ttl: u32) -> AnswerBuilder {
-        for iface in net::getifaddrs() {
+        let interfaces = match get_if_addrs() {
+            Ok(interfaces) => interfaces,
+            Err(err) => {
+                error!("could not get list of interfaces: {}", err);
+                return builder;
+            }
+        };
+
+        for iface in interfaces {
             if iface.is_loopback() {
                 continue;
             }
 
+            trace!("found interface {:?}", iface);
             match iface.ip() {
-                Some(IpAddr::V4(ip)) if !AF::v6() => {
+                IpAddr::V4(ip) if !AF::v6() => {
                     builder = builder.add_answer(hostname, QueryClass::IN, ttl, &RRData::A(ip))
                 }
-                Some(IpAddr::V6(ip)) if AF::v6() => {
+                IpAddr::V6(ip) if AF::v6() => {
                     builder = builder.add_answer(hostname, QueryClass::IN, ttl, &RRData::AAAA(ip))
                 }
                 _ => ()

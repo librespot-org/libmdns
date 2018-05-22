@@ -10,6 +10,7 @@ extern crate net2;
 extern crate nix;
 extern crate rand;
 extern crate tokio_core as tokio;
+extern crate get_if_addrs;
 
 use futures::Future;
 use futures::sync::mpsc;
@@ -174,6 +175,7 @@ impl Drop for Service {
 }
 
 struct Shutdown(CommandSender);
+
 impl Drop for Shutdown {
     fn drop(&mut self) {
         self.0.send_shutdown();
