@@ -132,6 +132,7 @@ impl Header {
         }
     }
 
+    #[allow(dead_code)]
     pub fn inc_additional(data: &mut [u8]) -> Option<u16> {
         let oldq = BigEndian::read_u16(&data[10..12]);
         if oldq < 65535 {

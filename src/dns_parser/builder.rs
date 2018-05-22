@@ -6,7 +6,7 @@ use super::{Opcode, ResponseCode, Header, Name, RRData, QueryType, QueryClass};
 
 pub enum Questions {}
 pub enum Answers {}
-pub enum Nameservers {}
+#[allow(dead_code)] pub enum Nameservers {}
 pub enum Additional {}
 
 pub trait MoveTo<T> { }
@@ -36,6 +36,7 @@ impl Builder<Questions> {
     ///
     /// Initially all sections are empty. You're expected to fill
     /// the questions section with `add_question`
+    #[allow(dead_code)]
     pub fn new_query(id: u16, recursion: bool) -> Builder<Questions> {
         let mut buf = Vec::with_capacity(512);
         let head = Header {
@@ -145,6 +146,7 @@ impl <T: MoveTo<Questions>> Builder<T> {
     /// # Panics
     ///
     /// * There are already 65535 questions in the buffer.
+    #[allow(dead_code)]
     pub fn add_question(self, qname: &Name,
         qtype: QueryType, qclass: QueryClass)
         -> Builder<Questions>
@@ -176,6 +178,7 @@ impl <T: MoveTo<Answers>> Builder<T> {
 }
 
 impl <T: MoveTo<Nameservers>> Builder<T> {
+    #[allow(dead_code)]
     pub fn add_nameserver(self, name: &Name,
         cls: QueryClass, ttl: u32, data: &RRData)
         -> Builder<Nameservers>
@@ -191,6 +194,7 @@ impl <T: MoveTo<Nameservers>> Builder<T> {
 }
 
 impl Builder<Additional> {
+    #[allow(dead_code)]
     pub fn add_additional(self, name: &Name,
         cls: QueryClass, ttl: u32, data: &RRData)
         -> Builder<Additional>

@@ -1,4 +1,3 @@
-#[macro_use(matches)] extern crate matches;
 #[macro_use(quick_error)] extern crate quick_error;
 
 #[macro_use] extern crate log;
@@ -12,7 +11,7 @@ extern crate nix;
 extern crate rand;
 extern crate tokio_core as tokio;
 
-use futures::{BoxFuture, Future};
+use futures::Future;
 use futures::sync::mpsc;
 use std::io;
 use std::thread;
@@ -52,8 +51,10 @@ pub struct Service {
     _shutdown: Arc<Shutdown>,
 }
 
+type ResponderTask = Box<Future<Item=(), Error=io::Error> + Send>;
+
 impl Responder {
-    fn setup_core() -> io::Result<(Core, BoxFuture<(), io::Error>, Responder)> {
+    fn setup_core() -> io::Result<(Core, ResponderTask, Responder)> {
         let core = Core::new()?;
         let (responder, task) = Self::with_handle(&core.handle())?;
         Ok((core, task, responder))
@@ -87,7 +88,7 @@ impl Responder {
         Ok(responder)
     }
 
-    pub fn with_handle(handle: &Handle) -> io::Result<(Responder, BoxFuture<(), io::Error>)> {
+    pub fn with_handle(handle: &Handle) -> io::Result<(Responder, ResponderTask)> {
         let mut hostname = try!(net::gethostname());
         if !hostname.ends_with(".local") {
             hostname.push_str(".local");
@@ -98,16 +99,17 @@ impl Responder {
         let v4 = FSM::<Inet>::new(handle, &services);
         let v6 = FSM::<Inet6>::new(handle, &services);
 
-        let (task, commands) = match (v4, v6) {
+        let (task, commands) : (ResponderTask, _) = match (v4, v6) {
             (Ok((v4_task, v4_command)), Ok((v6_task, v6_command))) => {
-                let task = v4_task.join(v6_task).map(|((),())| ()).boxed();
+                let task = v4_task.join(v6_task).map(|((),())| ());
+                let task = Box::new(task);
                 let commands = vec![v4_command, v6_command];
                 (task, commands)
             }
 
             (Ok((v4_task, v4_command)), Err(err)) => {
                 warn!("Failed to register IPv6 receiver: {:?}", err);
-                (v4_task.boxed(), vec![v4_command])
+                (Box::new(v4_task), vec![v4_command])
             }
 
             (Err(err), _) => return Err(err),
@@ -120,7 +122,7 @@ impl Responder {
             shutdown: Arc::new(Shutdown(commands)),
         };
 
-        Ok((responder, task.boxed()))
+        Ok((responder, task))
     }
 }
 
@@ -184,7 +186,7 @@ struct CommandSender(Vec<mpsc::UnboundedSender<Command>>);
 impl CommandSender {
     fn send(&mut self, cmd: Command) {
         for tx in self.0.iter_mut() {
-            tx.send(cmd.clone()).expect("responder died");
+            tx.unbounded_send(cmd.clone()).expect("responder died");
         }
     }
 

@@ -1,11 +1,10 @@
 extern crate env_logger;
-extern crate mdns;
-extern crate dns_parser;
+extern crate libmdns;
 
 pub fn main() {
-    env_logger::init().unwrap();
+    env_logger::init();
 
-    let responder = mdns::Responder::new().unwrap();
+    let responder = libmdns::Responder::new().unwrap();
     let _svc = responder.register(
         "_http._tcp".to_owned(),
         "Web Server".to_owned(),

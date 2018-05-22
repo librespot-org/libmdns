@@ -1,6 +1,7 @@
 quick_error! {
     /// Error parsing DNS packet
     #[derive(Debug)]
+    #[allow(dead_code)]
     pub enum Error {
         HeaderTooShort {
             description("packet is smaller than header size")
