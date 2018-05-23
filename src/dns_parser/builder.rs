@@ -57,13 +57,13 @@ impl Builder<Questions> {
         Builder { buf: buf, max_size: Some(512), _state: PhantomData }
     }
 
-    pub fn new_response(id: u16, recursion: bool) -> Builder<Questions> {
+    pub fn new_response(id: u16, recursion: bool, authoritative: bool) -> Builder<Questions> {
         let mut buf = Vec::with_capacity(512);
         let head = Header {
             id: id,
             query: false,
             opcode: Opcode::StandardQuery,
-            authoritative: false,
+            authoritative: authoritative,
             truncated: false,
             recursion_desired: recursion,
             recursion_available: false,

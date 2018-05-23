@@ -93,8 +93,8 @@ impl <AF: AddressFamily> FSM<AF> {
             return;
         }
 
-        let mut unicast_builder = dns_parser::Builder::new_response(packet.header.id, false).move_to::<dns_parser::Answers>();
-        let mut multicast_builder = dns_parser::Builder::new_response(packet.header.id, false).move_to::<dns_parser::Answers>();
+        let mut unicast_builder = dns_parser::Builder::new_response(packet.header.id, false, true).move_to::<dns_parser::Answers>();
+        let mut multicast_builder = dns_parser::Builder::new_response(packet.header.id, false, true).move_to::<dns_parser::Answers>();
         unicast_builder.set_max_size(None);
         multicast_builder.set_max_size(None);
 
@@ -175,7 +175,7 @@ impl <AF: AddressFamily> FSM<AF> {
     }
 
     fn send_unsolicited(&mut self, svc: &ServiceData, ttl: u32, include_ip: bool) {
-        let mut builder = dns_parser::Builder::new_response(0, false).move_to::<dns_parser::Answers>();
+        let mut builder = dns_parser::Builder::new_response(0, false, true).move_to::<dns_parser::Answers>();
         builder.set_max_size(None);
 
         let services = self.services.read().unwrap();
@@ -194,60 +194,6 @@ impl <AF: AddressFamily> FSM<AF> {
         }
     }
 }
-
-/*
-   impl rotor::Machine for FSM {
-    type Context = ();
-    type Seed = void::Void;
-
-    fn create(seed: Self::Seed, _scope: &mut Scope<Self::Context>) -> rotor::Response<Self, rotor::Void> {
-        void::unreachable(seed)
-    }
-
-    fn ready(self, _events: EventSet, _scope: &mut Scope<Self::Context>) -> rotor::Response<Self, Self::Seed> {
-        self.recv_packets().unwrap();
-        rotor::Response::ok(self)
-    }
-
-    fn spawned(self, _scope: &mut Scope<Self::Context>) -> rotor::Response<Self, Self::Seed> {
-        unimplemented!()
-    }
-
-    fn timeout(self, _scope: &mut Scope<Self::Context>) -> rotor::Response<Self, Self::Seed> {
-        unimplemented!()
-    }
-
-    fn wakeup(self, scope: &mut Scope<Self::Context>) -> rotor::Response<Self, Self::Seed> {
-        loop {
-            match self.rx.try_recv() {
-                Ok(Command::Shutdown) => {
-                    scope.shutdown_loop();
-                    return rotor::Response::done();
-                }
-                Ok(Command::SendUnsolicited { svc, ttl, include_ip }) => {
-                    match self.send_unsolicited(&svc, ttl, include_ip) {
-                        Ok(_) => (),
-                        Err(e) => {
-                            warn!("Error sending unsolicited: {:?}", e);
-                            return rotor::Response::error(Box::new(e));
-                        }
-                    }
-                }
-                Err(TryRecvError::Disconnected) => {
-                    warn!("responder disconnected without shutdown");
-                    scope.shutdown_loop();
-                    return rotor::Response::done();
-                }
-                Err(TryRecvError::Empty) => {
-                    break;
-                }
-            }
-        }
-
-        rotor::Response::ok(self)
-    }
-}
-*/
 
 impl <AF: AddressFamily> Future for FSM<AF> {
     type Item = ();
