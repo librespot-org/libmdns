@@ -1,6 +1,6 @@
 [package]
 name = "libmdns"
-version = "0.2.2"
+version = "0.2.3"
 authors = ["Casey Robinson <casey@rampantmonkey.com>"]
 
 description = "rust mdns library"
