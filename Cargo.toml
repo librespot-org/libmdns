@@ -3,7 +3,7 @@ name = "libmdns"
 version = "0.2.3"
 authors = ["Casey Robinson <casey@rampantmonkey.com>"]
 
-description = "rust mdns library"
+description = "mDNS Responder library for building discoverable LAN services in Rust"
 repository = "https://github.com/rampantmonkey/libmdns"
 readme = "README.md"
 license = "MIT"
