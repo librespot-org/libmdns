@@ -1,6 +1,6 @@
 [package]
 name = "libmdns"
-version = "0.2.3"
+version = "0.2.4"
 authors = ["Will Stott <willstott101+libmdns@gmail.com>"]
 
 description = "mDNS Responder library for building discoverable LAN services in Rust"
