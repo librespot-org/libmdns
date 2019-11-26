@@ -20,5 +20,8 @@ Then, add this to your crate root:
 extern crate libmdns;
 ```
 
+Only the latest stable version of rust and cargo are officially supported for now.
+Please open an issue on GitHub if you need support for older versions.
+
 ## Provenance Note
 This project originally started as a fork of [plietar/rust-mdns](https://github.com/plietar/rust-mdns).
