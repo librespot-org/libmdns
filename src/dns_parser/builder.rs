@@ -211,9 +211,9 @@ impl Builder<Additional> {
 
 #[cfg(test)]
 mod test {
-    use QueryType as QT;
-    use QueryClass as QC;
-    use Name;
+    use super::QueryType as QT;
+    use super::QueryClass as QC;
+    use super::Name;
     use super::Builder;
 
     #[test]

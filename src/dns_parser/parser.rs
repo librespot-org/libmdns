@@ -88,13 +88,13 @@ fn parse_record<'a>(data: &'a [u8], offset: &mut usize) -> Result<ResourceRecord
 mod test {
 
     use std::net::{Ipv4Addr, Ipv6Addr};
-    use {Packet, Header};
-    use Opcode::*;
-    use ResponseCode::NoError;
-    use QueryType as QT;
-    use QueryClass as QC;
-    use Class as C;
-    use RRData;
+    use {super::Packet, super::Header};
+    use super::super::Opcode::*;
+    use super::super::ResponseCode::NoError;
+    use super::QueryType as QT;
+    use super::QueryClass as QC;
+    use super::Class as C;
+    use super::RRData;
 
     #[test]
     fn parse_example_query() {

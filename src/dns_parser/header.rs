@@ -149,9 +149,9 @@ impl Header {
 #[cfg(test)]
 mod test {
 
-    use {Header};
-    use Opcode::*;
-    use ResponseCode::NoError;
+    use super::Header;
+    use super::Opcode::*;
+    use super::ResponseCode::NoError;
 
     #[test]
     fn parse_example_query() {
