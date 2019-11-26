@@ -4,13 +4,12 @@
 
 extern crate byteorder;
 extern crate futures;
-extern crate libc;
 extern crate multimap;
 extern crate net2;
-extern crate nix;
 extern crate rand;
 extern crate tokio_core as tokio;
 extern crate get_if_addrs;
+extern crate hostname;
 
 use futures::Future;
 use futures::sync::mpsc;
@@ -26,11 +25,6 @@ use dns_parser::Name;
 mod address_family;
 mod fsm;
 mod services;
-#[cfg(windows)]
-#[path = "netwin.rs"]
-mod net;
-#[cfg(not(windows))]
-mod net;
 
 use address_family::{Inet, Inet6};
 use services::{ServicesInner, Services, ServiceData};
@@ -90,7 +84,13 @@ impl Responder {
     }
 
     pub fn with_handle(handle: &Handle) -> io::Result<(Responder, ResponderTask)> {
-        let mut hostname = try!(net::gethostname());
+        let mut hostname = match hostname::get() {
+            Ok(s) => match s.into_string() {
+                Ok(s) => s,
+                Err(_) => return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Hostname not valid unicode")),
+            },
+            Err(err) => return Err(err),
+        };
         if !hostname.ends_with(".local") {
             hostname.push_str(".local");
         }
