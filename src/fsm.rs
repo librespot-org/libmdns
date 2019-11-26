@@ -1,18 +1,18 @@
-use dns_parser::{self, QueryClass, QueryType, Name, RRData};
+use dns_parser::{self, Name, QueryClass, QueryType, RRData};
+use futures::sync::mpsc;
+use futures::{Async, Future, Poll, Stream};
+use get_if_addrs::get_if_addrs;
 use std::collections::VecDeque;
 use std::io;
 use std::io::ErrorKind::WouldBlock;
 use std::marker::PhantomData;
 use std::net::{IpAddr, SocketAddr};
-use futures::{Poll, Async, Future, Stream};
-use futures::sync::mpsc;
 use tokio::net::UdpSocket;
 use tokio::reactor::Handle;
-use get_if_addrs::get_if_addrs;
 
 use super::{DEFAULT_TTL, MDNS_PORT};
 use address_family::AddressFamily;
-use services::{Services, ServiceData};
+use services::{ServiceData, Services};
 
 pub type AnswerBuilder = dns_parser::Builder<dns_parser::Answers>;
 
@@ -21,7 +21,7 @@ pub enum Command {
     SendUnsolicited {
         svc: ServiceData,
         ttl: u32,
-        include_ip: bool
+        include_ip: bool,
     },
     Shutdown,
 }
@@ -34,10 +34,11 @@ pub struct FSM<AF: AddressFamily> {
     _af: PhantomData<AF>,
 }
 
-impl <AF: AddressFamily> FSM<AF> {
-    pub fn new(handle: &Handle, services: &Services)
-        -> io::Result<(FSM<AF>, mpsc::UnboundedSender<Command>)>
-    {
+impl<AF: AddressFamily> FSM<AF> {
+    pub fn new(
+        handle: &Handle,
+        services: &Services,
+    ) -> io::Result<(FSM<AF>, mpsc::UnboundedSender<Command>)> {
         let std_socket = AF::bind()?;
         let socket = UdpSocket::from_socket(std_socket, handle)?;
         let (tx, rx) = mpsc::unbounded();
@@ -93,13 +94,19 @@ impl <AF: AddressFamily> FSM<AF> {
             return;
         }
 
-        let mut unicast_builder = dns_parser::Builder::new_response(packet.header.id, false, true).move_to::<dns_parser::Answers>();
-        let mut multicast_builder = dns_parser::Builder::new_response(packet.header.id, false, true).move_to::<dns_parser::Answers>();
+        let mut unicast_builder = dns_parser::Builder::new_response(packet.header.id, false, true)
+            .move_to::<dns_parser::Answers>();
+        let mut multicast_builder =
+            dns_parser::Builder::new_response(packet.header.id, false, true)
+                .move_to::<dns_parser::Answers>();
         unicast_builder.set_max_size(None);
         multicast_builder.set_max_size(None);
 
         for question in packet.questions {
-            debug!("received question: {:?} {}", question.qclass, question.qname);
+            debug!(
+                "received question: {:?} {}",
+                question.qclass, question.qname
+            );
 
             if question.qclass == QueryClass::IN || question.qclass == QueryClass::Any {
                 if question.qu {
@@ -122,13 +129,17 @@ impl <AF: AddressFamily> FSM<AF> {
         }
     }
 
-    fn handle_question(&self, question: &dns_parser::Question, mut builder: AnswerBuilder) -> AnswerBuilder {
+    fn handle_question(
+        &self,
+        question: &dns_parser::Question,
+        mut builder: AnswerBuilder,
+    ) -> AnswerBuilder {
         let services = self.services.read().unwrap();
 
         match question.qtype {
-            QueryType::A |
-            QueryType::AAAA |
-            QueryType::All if question.qname == *services.get_hostname() => {
+            QueryType::A | QueryType::AAAA | QueryType::All
+                if question.qname == *services.get_hostname() =>
+            {
                 builder = self.add_ip_rr(services.get_hostname(), builder, DEFAULT_TTL);
             }
             QueryType::PTR => {
@@ -150,7 +161,7 @@ impl <AF: AddressFamily> FSM<AF> {
                     builder = svc.add_txt_rr(builder, DEFAULT_TTL);
                 }
             }
-            _ => ()
+            _ => (),
         }
 
         builder
@@ -178,7 +189,7 @@ impl <AF: AddressFamily> FSM<AF> {
                 IpAddr::V6(ip) if AF::v6() => {
                     builder = builder.add_answer(hostname, QueryClass::IN, ttl, &RRData::AAAA(ip))
                 }
-                _ => ()
+                _ => (),
             }
         }
 
@@ -186,7 +197,8 @@ impl <AF: AddressFamily> FSM<AF> {
     }
 
     fn send_unsolicited(&mut self, svc: &ServiceData, ttl: u32, include_ip: bool) {
-        let mut builder = dns_parser::Builder::new_response(0, false, true).move_to::<dns_parser::Answers>();
+        let mut builder =
+            dns_parser::Builder::new_response(0, false, true).move_to::<dns_parser::Answers>();
         builder.set_max_size(None);
 
         let services = self.services.read().unwrap();
@@ -206,14 +218,18 @@ impl <AF: AddressFamily> FSM<AF> {
     }
 }
 
-impl <AF: AddressFamily> Future for FSM<AF> {
+impl<AF: AddressFamily> Future for FSM<AF> {
     type Item = ();
     type Error = io::Error;
     fn poll(&mut self) -> Poll<(), io::Error> {
         while let Async::Ready(cmd) = self.commands.poll().unwrap() {
             match cmd {
                 Some(Command::Shutdown) => return Ok(Async::Ready(())),
-                Some(Command::SendUnsolicited { svc, ttl, include_ip }) => {
+                Some(Command::SendUnsolicited {
+                    svc,
+                    ttl,
+                    include_ip,
+                }) => {
                     self.send_unsolicited(&svc, ttl, include_ip);
                 }
                 None => {

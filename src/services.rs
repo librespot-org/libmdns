@@ -1,12 +1,11 @@
-use std::sync::{Arc, RwLock};
+use dns_parser::{self, Name, QueryClass, RRData};
+use multimap::MultiMap;
+use rand::{thread_rng, Rng};
 use std::collections::HashMap;
 use std::slice;
-use multimap::MultiMap;
-use rand::{Rng, thread_rng};
-use dns_parser::{self, QueryClass, Name, RRData};
+use std::sync::{Arc, RwLock};
 
 pub type AnswerBuilder = dns_parser::Builder<dns_parser::Answers>;
-
 
 /// A collection of registered services is shared between threads.
 pub type Services = Arc<RwLock<ServicesInner>>;
@@ -18,7 +17,7 @@ pub struct ServicesInner {
     /// maps to id
     by_type: MultiMap<Name<'static>, usize>,
     /// maps to id
-    by_name: HashMap<Name<'static>, usize>
+    by_name: HashMap<Name<'static>, usize>,
 }
 
 impl ServicesInner {
@@ -36,13 +35,11 @@ impl ServicesInner {
     }
 
     pub fn find_by_name<'a>(&'a self, name: &'a Name<'a>) -> Option<&ServiceData> {
-        self.by_name.get(name)
-            .and_then(|id| self.by_id.get(id))
+        self.by_name.get(name).and_then(|id| self.by_id.get(id))
     }
 
     pub fn find_by_type<'a>(&'a self, ty: &'a Name<'a>) -> FindByType<'a> {
-        let ids = self.by_type.get_vec(ty)
-                              .map(|ids| ids.iter());
+        let ids = self.by_type.get_vec(ty).map(|ids| ids.iter());
 
         FindByType {
             services: self,
@@ -96,15 +93,12 @@ impl<'a> Iterator for FindByType<'a> {
     type Item = &'a ServiceData;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.ids.as_mut()
-            .and_then(Iterator::next)
-            .map(|id| {
-                let svc = self.services.by_id.get(id);
-                svc.expect("missing service")
-            })
+        self.ids.as_mut().and_then(Iterator::next).map(|id| {
+            let svc = self.services.by_id.get(id);
+            svc.expect("missing service")
+        })
     }
 }
-
 
 #[derive(Clone, Debug)]
 pub struct ServiceData {
@@ -117,16 +111,26 @@ pub struct ServiceData {
 /// Packet building helpers for `fsm` to respond with `ServiceData`
 impl ServiceData {
     pub fn add_ptr_rr(&self, builder: AnswerBuilder, ttl: u32) -> AnswerBuilder {
-        builder.add_answer(&self.typ, QueryClass::IN, ttl, &RRData::PTR(self.name.clone()))
+        builder.add_answer(
+            &self.typ,
+            QueryClass::IN,
+            ttl,
+            &RRData::PTR(self.name.clone()),
+        )
     }
 
     pub fn add_srv_rr(&self, hostname: &Name, builder: AnswerBuilder, ttl: u32) -> AnswerBuilder {
-        builder.add_answer(&self.name, QueryClass::IN, ttl, &RRData::SRV {
-            priority: 0,
-            weight: 0,
-            port: self.port,
-            target: hostname.clone(),
-        })
+        builder.add_answer(
+            &self.name,
+            QueryClass::IN,
+            ttl,
+            &RRData::SRV {
+                priority: 0,
+                weight: 0,
+                port: self.port,
+                target: hostname.clone(),
+            },
+        )
     }
 
     pub fn add_txt_rr(&self, builder: AnswerBuilder, ttl: u32) -> AnswerBuilder {

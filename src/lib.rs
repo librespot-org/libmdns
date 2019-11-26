@@ -1,23 +1,25 @@
-#[macro_use(quick_error)] extern crate quick_error;
+#[macro_use(quick_error)]
+extern crate quick_error;
 
-#[macro_use] extern crate log;
+#[macro_use]
+extern crate log;
 
 extern crate byteorder;
 extern crate futures;
+extern crate get_if_addrs;
+extern crate hostname;
 extern crate multimap;
 extern crate net2;
 extern crate rand;
 extern crate tokio_core as tokio;
-extern crate get_if_addrs;
-extern crate hostname;
 
-use futures::Future;
 use futures::sync::mpsc;
-use std::io;
-use std::thread;
-use std::sync::{Arc, RwLock};
+use futures::Future;
 use std::cell::RefCell;
-use tokio::reactor::{Handle, Core};
+use std::io;
+use std::sync::{Arc, RwLock};
+use std::thread;
+use tokio::reactor::{Core, Handle};
 
 mod dns_parser;
 use dns_parser::Name;
@@ -27,11 +29,11 @@ mod fsm;
 mod services;
 
 use address_family::{Inet, Inet6};
-use services::{ServicesInner, Services, ServiceData};
 use fsm::{Command, FSM};
+use services::{ServiceData, Services, ServicesInner};
 
-const DEFAULT_TTL : u32 = 60;
-const MDNS_PORT : u16 = 5353;
+const DEFAULT_TTL: u32 = 60;
+const MDNS_PORT: u16 = 5353;
 
 pub struct Responder {
     services: Services,
@@ -46,7 +48,7 @@ pub struct Service {
     _shutdown: Arc<Shutdown>,
 }
 
-type ResponderTask = Box<Future<Item=(), Error=io::Error> + Send>;
+type ResponderTask = Box<Future<Item = (), Error = io::Error> + Send>;
 
 impl Responder {
     fn setup_core() -> io::Result<(Core, ResponderTask, Responder)> {
@@ -59,15 +61,13 @@ impl Responder {
         let (tx, rx) = std::sync::mpsc::sync_channel(0);
         thread::Builder::new()
             .name("mdns-responder".to_owned())
-            .spawn(move || {
-                match Self::setup_core() {
-                    Ok((mut core, task, responder)) => {
-                        tx.send(Ok(responder)).expect("tx responder channel closed");
-                        core.run(task).expect("mdns thread failed");
-                    }
-                    Err(err) => {
-                        tx.send(Err(err)).expect("tx responder channel closed");
-                    }
+            .spawn(move || match Self::setup_core() {
+                Ok((mut core, task, responder)) => {
+                    tx.send(Ok(responder)).expect("tx responder channel closed");
+                    core.run(task).expect("mdns thread failed");
+                }
+                Err(err) => {
+                    tx.send(Err(err)).expect("tx responder channel closed");
                 }
             })?;
 
@@ -87,7 +87,12 @@ impl Responder {
         let mut hostname = match hostname::get() {
             Ok(s) => match s.into_string() {
                 Ok(s) => s,
-                Err(_) => return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Hostname not valid unicode")),
+                Err(_) => {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "Hostname not valid unicode",
+                    ))
+                }
             },
             Err(err) => return Err(err),
         };
@@ -100,9 +105,9 @@ impl Responder {
         let v4 = FSM::<Inet>::new(handle, &services);
         let v6 = FSM::<Inet6>::new(handle, &services);
 
-        let (task, commands) : (ResponderTask, _) = match (v4, v6) {
+        let (task, commands): (ResponderTask, _) = match (v4, v6) {
             (Ok((v4_task, v4_command)), Ok((v6_task, v6_command))) => {
-                let task = v4_task.join(v6_task).map(|((),())| ());
+                let task = v4_task.join(v6_task).map(|((), ())| ());
                 let task = Box::new(task);
                 let commands = vec![v4_command, v6_command];
                 (task, commands)
@@ -132,13 +137,15 @@ impl Responder {
         let txt = if txt.is_empty() {
             vec![0]
         } else {
-            txt.into_iter().flat_map(|entry| {
-                let entry = entry.as_bytes();
-                if entry.len() > 255 {
-                    panic!("{:?} is too long for a TXT record", entry);
-                }
-                std::iter::once(entry.len() as u8).chain(entry.into_iter().cloned())
-            }).collect()
+            txt.into_iter()
+                .flat_map(|entry| {
+                    let entry = entry.as_bytes();
+                    if entry.len() > 255 {
+                        panic!("{:?} is too long for a TXT record", entry);
+                    }
+                    std::iter::once(entry.len() as u8).chain(entry.into_iter().cloned())
+                })
+                .collect()
         };
 
         let svc = ServiceData {
@@ -148,12 +155,11 @@ impl Responder {
             txt: txt,
         };
 
-        self.commands.borrow_mut()
+        self.commands
+            .borrow_mut()
             .send_unsolicited(svc.clone(), DEFAULT_TTL, true);
 
-        let id = self.services
-            .write().unwrap()
-            .register(svc);
+        let id = self.services.write().unwrap().register(svc);
 
         Service {
             id: id,
@@ -162,14 +168,11 @@ impl Responder {
             _shutdown: self.shutdown.clone(),
         }
     }
-
 }
 
 impl Drop for Service {
     fn drop(&mut self) {
-        let svc = self.services
-            .write().unwrap()
-            .unregister(self.id);
+        let svc = self.services.write().unwrap().unregister(self.id);
         self.commands.send_unsolicited(svc, 0, false);
     }
 }

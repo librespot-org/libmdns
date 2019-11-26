@@ -9,7 +9,8 @@ pub fn main() {
         "_http._tcp".to_owned(),
         "Web Server".to_owned(),
         80,
-        &["path=/"]);
+        &["path=/"],
+    );
 
     loop {
         ::std::thread::sleep(::std::time::Duration::from_secs(10));
