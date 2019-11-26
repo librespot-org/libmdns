@@ -1,6 +1,6 @@
-# rust-mdns - Rust mDNS responder
+# libmdns - Rust mDNS responder
 
-rust-mdns is a pure rust implementation of the mDNS ([RFC 6762]) and DNS-SD ([RFC 6763]) protocols.
+libmdns is a pure rust implementation of the mDNS ([RFC 6762]) and DNS-SD ([RFC 6763]) protocols.
 
 [RFC 6762]: https://tools.ietf.org/html/rfc6762
 [RFC 6763]: https://tools.ietf.org/html/rfc6763

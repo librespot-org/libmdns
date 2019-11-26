@@ -1,10 +1,10 @@
 [package]
 name = "libmdns"
 version = "0.2.3"
-authors = ["Casey Robinson <casey@rampantmonkey.com>"]
+authors = ["Will Stott <willstott101+libmdns@gmail.com>"]
 
 description = "mDNS Responder library for building discoverable LAN services in Rust"
-repository = "https://github.com/rampantmonkey/libmdns"
+repository = "https://github.com/librespot-org/libmdns"
 readme = "README.md"
 license = "MIT"
 
