@@ -4,5 +4,10 @@ rust:
     - beta
     - nightly
 
+jobs:
+  allow_failures:
+    - rust: nightly
+  fast_finish: true
+
 notifications:
     email: false
