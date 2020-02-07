@@ -8,20 +8,20 @@ use super::{Type, Class, ResourceRecord, RRData};
 
 impl<'a> Packet<'a> {
     pub fn parse(data: &[u8]) -> Result<Packet, Error> {
-        let header = try!(Header::parse(data));
+        let header = Header::parse(data)?;
         let mut offset = Header::size();
         let mut questions = Vec::with_capacity(header.questions as usize);
         for _ in 0..header.questions {
-            let (name, name_size) = try!(Name::scan(&data[offset..], data));
+            let (name, name_size) = Name::scan(&data[offset..], data)?;
             offset += name_size;
             if offset + 4 > data.len() {
                 return Err(Error::UnexpectedEOF);
             }
-            let qtype = try!(QueryType::parse(
-                BigEndian::read_u16(&data[offset..offset+2])));
+            let qtype = QueryType::parse(
+                BigEndian::read_u16(&data[offset..offset+2]))?;
             offset += 2;
             let qclass_qu = BigEndian::read_u16(&data[offset..offset+2]);
-            let qclass = try!(QueryClass::parse(qclass_qu & 0x7fff));
+            let qclass = QueryClass::parse(qclass_qu & 0x7fff)?;
             let qu = (qclass_qu & 0x8000) != 0;
 
             offset += 2;
@@ -34,11 +34,11 @@ impl<'a> Packet<'a> {
         }
         let mut answers = Vec::with_capacity(header.answers as usize);
         for _ in 0..header.answers {
-            answers.push(try!(parse_record(data, &mut offset)));
+            answers.push(parse_record(data, &mut offset)?);
         }
         let mut nameservers = Vec::with_capacity(header.nameservers as usize);
         for _ in 0..header.nameservers {
-            nameservers.push(try!(parse_record(data, &mut offset)));
+            nameservers.push(parse_record(data, &mut offset)?);
         }
         Ok(Packet {
             header: header,
@@ -52,16 +52,16 @@ impl<'a> Packet<'a> {
 
 // Generic function to parse answer, nameservers, and additional records.
 fn parse_record<'a>(data: &'a [u8], offset: &mut usize) -> Result<ResourceRecord<'a>, Error> {
-    let (name, name_size) = try!(Name::scan(&data[*offset..], data));
+    let (name, name_size) = Name::scan(&data[*offset..], data)?;
     *offset += name_size;
     if *offset + 10 > data.len() {
         return Err(Error::UnexpectedEOF);
     }
-    let typ = try!(Type::parse(
-        BigEndian::read_u16(&data[*offset..*offset+2])));
+    let typ = Type::parse(
+        BigEndian::read_u16(&data[*offset..*offset+2]))?;
     *offset += 2;
-    let cls = try!(Class::parse(
-        BigEndian::read_u16(&data[*offset..*offset+2]) & 0x7fff ));
+    let cls = Class::parse(
+        BigEndian::read_u16(&data[*offset..*offset+2]) & 0x7fff )?;
     *offset += 2;
     let mut ttl = BigEndian::read_u32(&data[*offset..*offset+4]);
     if ttl > i32::MAX as u32 {
@@ -73,8 +73,8 @@ fn parse_record<'a>(data: &'a [u8], offset: &mut usize) -> Result<ResourceRecord
     if *offset + rdlen > data.len() {
         return Err(Error::UnexpectedEOF);
     }
-    let data = try!(RRData::parse(typ,
-        &data[*offset..*offset+rdlen], data));
+    let data = RRData::parse(typ,
+        &data[*offset..*offset+rdlen], data)?;
     *offset += rdlen;
     Ok(ResourceRecord {
         name: name,

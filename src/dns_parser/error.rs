@@ -1,3 +1,5 @@
+use quick_error::quick_error;
+
 quick_error! {
     /// Error parsing DNS packet
     #[derive(Debug)]
