@@ -1,18 +1,20 @@
-use dns_parser::{self, Name, QueryClass, QueryType, RRData};
-use futures::sync::mpsc;
-use futures::{Async, Future, Poll, Stream};
+use crate::dns_parser::{self, Name, QueryClass, QueryType, RRData};
+use futures::channel::mpsc;
+use futures::future::*;
 use get_if_addrs::get_if_addrs;
+use std::pin::Pin;
+use std::task::*;
+
 use std::collections::VecDeque;
 use std::io;
-use std::io::ErrorKind::WouldBlock;
 use std::marker::PhantomData;
 use std::net::{IpAddr, SocketAddr};
 use tokio::net::UdpSocket;
-use tokio::reactor::Handle;
 
 use super::{DEFAULT_TTL, MDNS_PORT};
-use address_family::AddressFamily;
-use services::{ServiceData, Services};
+
+use crate::address_family::AddressFamily;
+use crate::services::{ServiceData, Services};
 
 pub type AnswerBuilder = dns_parser::Builder<dns_parser::Answers>;
 
@@ -26,6 +28,7 @@ pub enum Command {
     Shutdown,
 }
 
+#[pin_project::pin_project]
 pub struct FSM<AF: AddressFamily> {
     socket: UdpSocket,
     services: Services,
@@ -34,17 +37,15 @@ pub struct FSM<AF: AddressFamily> {
     _af: PhantomData<AF>,
 }
 
+
 impl<AF: AddressFamily> FSM<AF> {
-    pub fn new(
-        handle: &Handle,
-        services: &Services,
-    ) -> io::Result<(FSM<AF>, mpsc::UnboundedSender<Command>)> {
+    pub fn new(services: &Services) -> io::Result<(FSM<AF>, mpsc::UnboundedSender<Command>)> {
         let std_socket = AF::bind()?;
-        let socket = UdpSocket::from_socket(std_socket, handle)?;
+        let socket = UdpSocket::from_std(std_socket)?;
         let (tx, rx) = mpsc::unbounded();
 
         let fsm = FSM {
-            socket: socket,
+            socket,
             services: services.clone(),
             commands: rx,
             outgoing: VecDeque::new(),
@@ -53,24 +54,31 @@ impl<AF: AddressFamily> FSM<AF> {
 
         Ok((fsm, tx))
     }
+}
 
-    fn recv_packets(&mut self) -> io::Result<()> {
+
+#[pin_project::project]
+impl<AF: AddressFamily> FSM<AF> {
+
+    fn recv_packets(
+        &mut self,
+        ctx: &mut std::task::Context,
+    ) -> io::Result<()> {
         let mut buf = [0u8; 4096];
-        loop {
-            let (bytes, addr) = match self.socket.recv_from(&mut buf) {
-                Ok((bytes, addr)) => (bytes, addr),
-                Err(ref ioerr) if ioerr.kind() == WouldBlock => break,
-                Err(err) => return Err(err),
-            };
 
-            if bytes >= buf.len() {
-                warn!("buffer too small for packet from {:?}", addr);
-                continue;
+        match self.socket.poll_recv_from(ctx,&mut buf) {
+            Poll::Ready(Ok((bytes, addr))) => {
+                if bytes >= buf.len() {
+                    warn!("buffer too small for packet from {:?}", addr);
+                    Ok(())
+                } else {
+                    self.handle_packet(&buf[..bytes], addr);
+                    Ok(())
+                }
             }
-
-            self.handle_packet(&buf[..bytes], addr);
+            Poll::Ready(Err(err)) => Err(err),
+            _ => Ok(())
         }
-        Ok(())
     }
 
     fn handle_packet(&mut self, buffer: &[u8], addr: SocketAddr) {
@@ -216,15 +224,13 @@ impl<AF: AddressFamily> FSM<AF> {
             self.outgoing.push_back((response, addr));
         }
     }
-}
 
-impl<AF: AddressFamily> Future for FSM<AF> {
-    type Item = ();
-    type Error = io::Error;
-    fn poll(&mut self) -> Poll<(), io::Error> {
-        while let Async::Ready(cmd) = self.commands.poll().unwrap() {
+
+    fn poll_project(&mut self, ctx: &mut std::task::Context) -> Poll<Result<(),io::Error>> {
+
+        while let Ok(cmd) = self.commands.try_next() {
             match cmd {
-                Some(Command::Shutdown) => return Ok(Async::Ready(())),
+                Some(Command::Shutdown) => return Poll::Ready(Ok(())),
                 Some(Command::SendUnsolicited {
                     svc,
                     ttl,
@@ -234,31 +240,38 @@ impl<AF: AddressFamily> Future for FSM<AF> {
                 }
                 None => {
                     warn!("responder disconnected without shutdown");
-                    return Ok(Async::Ready(()));
+                    return Poll::Ready(Ok(()));
                 }
             }
         }
 
-        while let Async::Ready(()) = self.socket.poll_read() {
-            self.recv_packets()?;
-        }
+        self.recv_packets(ctx)?;
 
         loop {
             if let Some(&(ref response, ref addr)) = self.outgoing.front() {
                 trace!("sending packet to {:?}", addr);
 
-                match self.socket.send_to(response, addr) {
-                    Ok(_) => (),
-                    Err(ref ioerr) if ioerr.kind() == WouldBlock => break,
-                    Err(err) => warn!("error sending packet {:?}", err),
+                match self.socket.poll_send_to(ctx, response, addr) {
+                    Poll::Ready(Ok(_)) => {
+                        self.outgoing.pop_front();
+                    }
+                    Poll::Ready(Err(err)) => {
+                        warn!("error sending packet {:?}", err);
+                        self.outgoing.pop_front();
+                    }
+                    Poll::Pending => break,
                 }
-            } else {
-                break;
             }
-
-            self.outgoing.pop_front();
         }
 
-        Ok(Async::NotReady)
+        Poll::Pending
+    }
+}
+
+impl<AF: AddressFamily> Future for FSM<AF> {
+    type Output = Result<(), io::Error>;
+
+    fn poll(self: Pin<&mut Self>, ctx: &mut std::task::Context) -> Poll<Self::Output> {
+        self.project().poll_project(ctx)
     }
 }

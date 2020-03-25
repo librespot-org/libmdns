@@ -1,0 +1,7 @@
+merge_derives=true
+merge_imports=true
+normalize_comments=true
+reorder_impl_items=true
+reorder_modules=true
+use_try_shorthand=true
+use_field_init_shorthand=true
