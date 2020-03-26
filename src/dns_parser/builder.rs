@@ -1,16 +1,17 @@
 use std::marker::PhantomData;
 
-use byteorder::{ByteOrder, BigEndian, WriteBytesExt};
+use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
 
-use super::{Opcode, ResponseCode, Header, Name, RRData, QueryType, QueryClass};
+use super::{Header, Name, Opcode, QueryClass, QueryType, RRData, ResponseCode};
 
 pub enum Questions {}
 pub enum Answers {}
-#[allow(dead_code)] pub enum Nameservers {}
+#[allow(dead_code)]
+pub enum Nameservers {}
 pub enum Additional {}
 
-pub trait MoveTo<T> { }
-impl <T> MoveTo<T> for T {}
+pub trait MoveTo<T> {}
+impl<T> MoveTo<T> for T {}
 
 impl MoveTo<Answers> for Questions {}
 
@@ -55,7 +56,11 @@ impl Builder<Questions> {
         };
         buf.extend([0u8; 12].iter());
         head.write(&mut buf[..12]);
-        Builder { buf: buf, max_size: Some(512), _state: PhantomData }
+        Builder {
+            buf: buf,
+            max_size: Some(512),
+            _state: PhantomData,
+        }
     }
 
     pub fn new_response(id: u16, recursion: bool, authoritative: bool) -> Builder<Questions> {
@@ -76,14 +81,16 @@ impl Builder<Questions> {
         };
         buf.extend([0u8; 12].iter());
         head.write(&mut buf[..12]);
-        Builder { buf: buf, max_size: Some(512), _state: PhantomData }
+        Builder {
+            buf: buf,
+            max_size: Some(512),
+            _state: PhantomData,
+        }
     }
 }
 
-impl <T> Builder<T> {
-    fn write_rr(&mut self, name: &Name,
-        cls: QueryClass, ttl: u32, data: &RRData) {
-
+impl<T> Builder<T> {
+    fn write_rr(&mut self, name: &Name, cls: QueryClass, ttl: u32, data: &RRData) {
         name.write_to(&mut self.buf).unwrap();
         self.buf.write_u16::<BigEndian>(data.typ() as u16).unwrap();
         self.buf.write_u16::<BigEndian>(cls as u16).unwrap();
@@ -96,7 +103,10 @@ impl <T> Builder<T> {
         data.write_to(&mut self.buf).unwrap();
         let data_size = self.buf.len() - data_offset;
 
-        BigEndian::write_u16(&mut self.buf[size_offset..size_offset+2], data_size as u16);
+        BigEndian::write_u16(
+            &mut self.buf[size_offset..size_offset + 2],
+            data_size as u16,
+        );
     }
 
     /// Returns the final packet
@@ -113,7 +123,7 @@ impl <T> Builder<T> {
     /// appropriate.
     // TODO(tailhook) does the truncation make sense for TCP, and how
     // to treat it for EDNS0?
-    pub fn build(mut self) -> Result<Vec<u8>,Vec<u8>> {
+    pub fn build(mut self) -> Result<Vec<u8>, Vec<u8>> {
         // TODO(tailhook) optimize labels
         match self.max_size {
             Some(max_size) if self.buf.len() > max_size => {
@@ -124,8 +134,15 @@ impl <T> Builder<T> {
         }
     }
 
-    pub fn move_to<U>(self) -> Builder<U> where T: MoveTo<U> {
-        Builder { buf: self.buf, max_size: self.max_size, _state: PhantomData }
+    pub fn move_to<U>(self) -> Builder<U>
+    where
+        T: MoveTo<U>,
+    {
+        Builder {
+            buf: self.buf,
+            max_size: self.max_size,
+            _state: PhantomData,
+        }
     }
 
     pub fn set_max_size(&mut self, max_size: Option<usize>) {
@@ -133,61 +150,66 @@ impl <T> Builder<T> {
     }
 
     pub fn is_empty(&self) -> bool {
-        Header::question_count(&self.buf) == 0 &&
-            Header::answer_count(&self.buf) == 0 &&
-            Header::nameserver_count(&self.buf) == 0 &&
-            Header::additional_count(&self.buf) == 0
+        Header::question_count(&self.buf) == 0
+            && Header::answer_count(&self.buf) == 0
+            && Header::nameserver_count(&self.buf) == 0
+            && Header::additional_count(&self.buf) == 0
     }
 }
 
-impl <T: MoveTo<Questions>> Builder<T> {
+impl<T: MoveTo<Questions>> Builder<T> {
     /// Adds a question to the packet
     ///
     /// # Panics
     ///
     /// * There are already 65535 questions in the buffer.
     #[allow(dead_code)]
-    pub fn add_question(self, qname: &Name,
-        qtype: QueryType, qclass: QueryClass)
-        -> Builder<Questions>
-    {
+    pub fn add_question(
+        self,
+        qname: &Name,
+        qtype: QueryType,
+        qclass: QueryClass,
+    ) -> Builder<Questions> {
         let mut builder = self.move_to::<Questions>();
 
         qname.write_to(&mut builder.buf).unwrap();
         builder.buf.write_u16::<BigEndian>(qtype as u16).unwrap();
         builder.buf.write_u16::<BigEndian>(qclass as u16).unwrap();
-        Header::inc_questions(&mut builder.buf)
-            .expect("Too many questions");
+        Header::inc_questions(&mut builder.buf).expect("Too many questions");
         builder
     }
 }
 
-impl <T: MoveTo<Answers>> Builder<T> {
-    pub fn add_answer(self, name: &Name,
-        cls: QueryClass, ttl: u32, data: &RRData)
-        -> Builder<Answers>
-    {
+impl<T: MoveTo<Answers>> Builder<T> {
+    pub fn add_answer(
+        self,
+        name: &Name,
+        cls: QueryClass,
+        ttl: u32,
+        data: &RRData,
+    ) -> Builder<Answers> {
         let mut builder = self.move_to::<Answers>();
 
         builder.write_rr(name, cls, ttl, data);
-        Header::inc_answers(&mut builder.buf)
-            .expect("Too many answers");
+        Header::inc_answers(&mut builder.buf).expect("Too many answers");
 
         builder
     }
 }
 
-impl <T: MoveTo<Nameservers>> Builder<T> {
+impl<T: MoveTo<Nameservers>> Builder<T> {
     #[allow(dead_code)]
-    pub fn add_nameserver(self, name: &Name,
-        cls: QueryClass, ttl: u32, data: &RRData)
-        -> Builder<Nameservers>
-    {
+    pub fn add_nameserver(
+        self,
+        name: &Name,
+        cls: QueryClass,
+        ttl: u32,
+        data: &RRData,
+    ) -> Builder<Nameservers> {
         let mut builder = self.move_to::<Nameservers>();
 
         builder.write_rr(name, cls, ttl, data);
-        Header::inc_nameservers(&mut builder.buf)
-            .expect("Too many nameservers");
+        Header::inc_nameservers(&mut builder.buf).expect("Too many nameservers");
 
         builder
     }
@@ -195,15 +217,17 @@ impl <T: MoveTo<Nameservers>> Builder<T> {
 
 impl Builder<Additional> {
     #[allow(dead_code)]
-    pub fn add_additional(self, name: &Name,
-        cls: QueryClass, ttl: u32, data: &RRData)
-        -> Builder<Additional>
-    {
+    pub fn add_additional(
+        self,
+        name: &Name,
+        cls: QueryClass,
+        ttl: u32,
+        data: &RRData,
+    ) -> Builder<Additional> {
         let mut builder = self.move_to::<Additional>();
 
         builder.write_rr(name, cls, ttl, data);
-        Header::inc_nameservers(&mut builder.buf)
-            .expect("Too many additional answers");
+        Header::inc_nameservers(&mut builder.buf).expect("Too many additional answers");
 
         builder
     }
@@ -211,10 +235,10 @@ impl Builder<Additional> {
 
 #[cfg(test)]
 mod test {
-    use super::QueryType as QT;
-    use super::QueryClass as QC;
-    use super::Name;
     use super::Builder;
+    use super::Name;
+    use super::QueryClass as QC;
+    use super::QueryType as QT;
 
     #[test]
     fn build_query() {

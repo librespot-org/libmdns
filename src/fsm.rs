@@ -1,4 +1,6 @@
-use dns_parser::{self, Name, QueryClass, QueryType, RRData};
+use crate::dns_parser::{self, Name, QueryClass, QueryType, RRData};
+use crate::tokio::net::UdpSocket;
+use crate::tokio::reactor::Handle;
 use futures::sync::mpsc;
 use futures::{Async, Future, Poll, Stream};
 use get_if_addrs::get_if_addrs;
@@ -7,12 +9,10 @@ use std::io;
 use std::io::ErrorKind::WouldBlock;
 use std::marker::PhantomData;
 use std::net::{IpAddr, SocketAddr};
-use tokio::net::UdpSocket;
-use tokio::reactor::Handle;
 
 use super::{DEFAULT_TTL, MDNS_PORT};
-use address_family::AddressFamily;
-use services::{ServiceData, Services};
+use crate::address_family::AddressFamily;
+use crate::services::{ServiceData, Services};
 
 pub type AnswerBuilder = dns_parser::Builder<dns_parser::Answers>;
 

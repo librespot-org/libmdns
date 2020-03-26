@@ -13,24 +13,24 @@ extern crate net2;
 extern crate rand;
 extern crate tokio_core as tokio;
 
+use crate::tokio::reactor::{Core, Handle};
 use futures::sync::mpsc;
 use futures::Future;
 use std::cell::RefCell;
 use std::io;
 use std::sync::{Arc, RwLock};
 use std::thread;
-use tokio::reactor::{Core, Handle};
 
 mod dns_parser;
-use dns_parser::Name;
+use crate::dns_parser::Name;
 
 mod address_family;
 mod fsm;
 mod services;
 
-use address_family::{Inet, Inet6};
-use fsm::{Command, FSM};
-use services::{ServiceData, Services, ServicesInner};
+use crate::address_family::{Inet, Inet6};
+use crate::fsm::{Command, FSM};
+use crate::services::{ServiceData, Services, ServicesInner};
 
 const DEFAULT_TTL: u32 = 60;
 const MDNS_PORT: u16 = 5353;
@@ -48,7 +48,7 @@ pub struct Service {
     _shutdown: Arc<Shutdown>,
 }
 
-type ResponderTask = Box<Future<Item = (), Error = io::Error> + Send>;
+type ResponderTask = Box<dyn Future<Item = (), Error = io::Error> + Send>;
 
 impl Responder {
     fn setup_core() -> io::Result<(Core, ResponderTask, Responder)> {

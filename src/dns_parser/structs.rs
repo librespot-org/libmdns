@@ -1,5 +1,4 @@
-use super::{QueryType, QueryClass, Name, Class, Header, RRData};
-
+use super::{Class, Header, Name, QueryClass, QueryType, RRData};
 
 /// Parsed DNS packet
 #[derive(Debug)]
