@@ -38,10 +38,11 @@ pub struct FSM<AF: AddressFamily> {
 
 impl<AF: AddressFamily> FSM<AF> {
     pub fn new(
-        handle: &Handle,
+        // handle: &Handle,
         services: &Services,
     ) -> io::Result<(FSM<AF>, mpsc::UnboundedSender<Command>)> {
         let std_socket = AF::bind()?;
+        let handle = &Handle::default();
         let socket = UdpSocket::from_std(std_socket, handle)?;
         let (tx, rx) = mpsc::unbounded();
 
