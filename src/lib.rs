@@ -5,8 +5,8 @@ use std::cell::RefCell;
 use std::io;
 use std::sync::{Arc, RwLock};
 use std::thread;
-use tokio::reactor::Handle;
-use tokio::runtime::Runtime;
+
+use tokio::runtime::{current_thread::Handle, Runtime};
 
 mod dns_parser;
 use crate::dns_parser::Name;
@@ -40,8 +40,7 @@ type ResponderTask = Box<dyn Future<Item = (), Error = io::Error> + Send>;
 impl Responder {
     fn setup_core() -> io::Result<(Runtime, ResponderTask, Responder)> {
         let rt = Runtime::new().unwrap();
-        let handle = Handle::default();
-        let (responder, task) = Self::with_handle(&handle)?;
+        let (responder, task) = Self::with_default_handle()?;
         Ok((rt, task, responder))
     }
 
@@ -63,15 +62,17 @@ impl Responder {
     }
 
     pub fn spawn(handle: &Handle) -> io::Result<Responder> {
-        let (responder, task) = Responder::with_handle(handle)?;
-        tokio::spawn(task.map_err(|e| {
-            warn!("mdns error {:?}", e);
-            ()
-        }));
+        let (responder, task) = Self::with_default_handle()?;
+        handle
+            .spawn(task.map_err(|e| {
+                warn!("mdns error {:?}", e);
+                ()
+            }))
+            .unwrap();
         Ok(responder)
     }
 
-    pub fn with_handle(handle: &Handle) -> io::Result<(Responder, ResponderTask)> {
+    pub fn with_default_handle() -> io::Result<(Responder, ResponderTask)> {
         let mut hostname = match hostname::get() {
             Ok(s) => match s.into_string() {
                 Ok(s) => s,
@@ -90,8 +91,8 @@ impl Responder {
 
         let services = Arc::new(RwLock::new(ServicesInner::new(hostname)));
 
-        let v4 = FSM::<Inet>::new(handle, &services);
-        let v6 = FSM::<Inet6>::new(handle, &services);
+        let v4 = FSM::<Inet>::new(&services);
+        let v6 = FSM::<Inet6>::new(&services);
 
         let (task, commands): (ResponderTask, _) = match (v4, v6) {
             (Ok((v4_task, v4_command)), Ok((v6_task, v6_command))) => {
