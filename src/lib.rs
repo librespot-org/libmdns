@@ -11,15 +11,16 @@ extern crate hostname;
 extern crate multimap;
 extern crate net2;
 extern crate rand;
-extern crate tokio_core as tokio;
+extern crate tokio;
 
-use crate::tokio::reactor::{Core, Handle};
 use futures::sync::mpsc;
 use futures::Future;
 use std::cell::RefCell;
 use std::io;
 use std::sync::{Arc, RwLock};
 use std::thread;
+use tokio::reactor::Handle;
+use tokio::runtime::Runtime;
 
 mod dns_parser;
 use crate::dns_parser::Name;
@@ -51,10 +52,11 @@ pub struct Service {
 type ResponderTask = Box<dyn Future<Item = (), Error = io::Error> + Send>;
 
 impl Responder {
-    fn setup_core() -> io::Result<(Core, ResponderTask, Responder)> {
-        let core = Core::new()?;
-        let (responder, task) = Self::with_handle(&core.handle())?;
-        Ok((core, task, responder))
+    fn setup_core() -> io::Result<(Runtime, ResponderTask, Responder)> {
+        let rt = Runtime::new().unwrap();
+        let handle = Handle::default();
+        let (responder, task) = Self::with_handle(&handle)?;
+        Ok((rt, task, responder))
     }
 
     pub fn new() -> io::Result<Responder> {
@@ -64,7 +66,7 @@ impl Responder {
             .spawn(move || match Self::setup_core() {
                 Ok((mut core, task, responder)) => {
                     tx.send(Ok(responder)).expect("tx responder channel closed");
-                    core.run(task).expect("mdns thread failed");
+                    core.block_on(task).expect("mdns thread failed");
                 }
                 Err(err) => {
                     tx.send(Err(err)).expect("tx responder channel closed");
@@ -76,7 +78,7 @@ impl Responder {
 
     pub fn spawn(handle: &Handle) -> io::Result<Responder> {
         let (responder, task) = Responder::with_handle(handle)?;
-        handle.spawn(task.map_err(|e| {
+        tokio::spawn(task.map_err(|e| {
             warn!("mdns error {:?}", e);
             ()
         }));
