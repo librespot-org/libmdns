@@ -50,9 +50,8 @@ pub struct Service {
 type ResponderTask = BoxFuture<'static, Result<(), io::Error>>;
 
 impl Responder {
-
-    pub async fn new() -> io::Result<Responder> {
-        let (responder,task) = Self::with_handle()?;
+    pub fn new() -> io::Result<Responder> {
+        let (responder, task) = Self::with_handle()?;
 
         tokio::spawn(task);
 

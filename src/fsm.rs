@@ -37,7 +37,6 @@ pub struct FSM<AF: AddressFamily> {
     _af: PhantomData<AF>,
 }
 
-
 impl<AF: AddressFamily> FSM<AF> {
     pub fn new(services: &Services) -> io::Result<(FSM<AF>, mpsc::UnboundedSender<Command>)> {
         let std_socket = AF::bind()?;
@@ -58,14 +57,10 @@ impl<AF: AddressFamily> FSM<AF> {
 
 #[pin_project::project]
 impl<AF: AddressFamily> FSM<AF> {
-
-    fn recv_packets(
-        &mut self,
-        ctx: &mut std::task::Context,
-    ) -> io::Result<()> {
+    fn recv_packets(&mut self, ctx: &mut std::task::Context) -> io::Result<()> {
         let mut buf = [0u8; 4096];
 
-        match self.socket.poll_recv_from(ctx,&mut buf) {
+        match self.socket.poll_recv_from(ctx, &mut buf) {
             Poll::Ready(Ok((bytes, addr))) => {
                 if bytes >= buf.len() {
                     warn!("buffer too small for packet from {:?}", addr);
@@ -76,7 +71,7 @@ impl<AF: AddressFamily> FSM<AF> {
                 }
             }
             Poll::Ready(Err(err)) => Err(err),
-            _ => Ok(())
+            _ => Ok(()),
         }
     }
 
@@ -224,8 +219,7 @@ impl<AF: AddressFamily> FSM<AF> {
         }
     }
 
-
-    fn poll_project(&mut self, ctx: &mut std::task::Context) -> Poll<Result<(),io::Error>> {
+    fn poll_project(&mut self, ctx: &mut std::task::Context) -> Poll<Result<(), io::Error>> {
         while let Ok(cmd) = self.commands.try_next() {
             match cmd {
                 Some(Command::Shutdown) => return Poll::Ready(Ok(())),
@@ -245,20 +239,19 @@ impl<AF: AddressFamily> FSM<AF> {
 
         self.recv_packets(ctx)?;
 
+        while let Some(&(ref response, ref addr)) = self.outgoing.front() {
+            trace!("sending packet to {:?}", addr);
 
-         while let Some(&(ref response, ref addr)) = self.outgoing.front() {
-                trace!("sending packet to {:?}", addr);
-
-                match self.socket.poll_send_to(ctx, response, addr) {
-                    Poll::Ready(Ok(_)) => {
-                        self.outgoing.pop_front();
-                    }
-                    Poll::Ready(Err(err)) => {
-                        warn!("error sending packet {:?}", err);
-                        self.outgoing.pop_front();
-                    }
-                    Poll::Pending => break,
+            match self.socket.poll_send_to(ctx, response, addr) {
+                Poll::Ready(Ok(_)) => {
+                    self.outgoing.pop_front();
                 }
+                Poll::Ready(Err(err)) => {
+                    warn!("error sending packet {:?}", err);
+                    self.outgoing.pop_front();
+                }
+                Poll::Pending => break,
+            }
         }
 
         Poll::Pending
