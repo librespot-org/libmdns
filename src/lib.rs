@@ -14,12 +14,11 @@ extern crate rand;
 extern crate tokio;
 
 use futures::channel::mpsc;
-use futures::future::{BoxFuture, FutureExt, TryFutureExt};
+use futures::future::{BoxFuture, FutureExt};
+use futures::*;
 use std::cell::RefCell;
 use std::io;
 use std::sync::{Arc, RwLock};
-use std::thread;
-use tokio::runtime::{Handle, Runtime};
 
 mod dns_parser;
 use crate::dns_parser::Name;
@@ -51,36 +50,16 @@ pub struct Service {
 type ResponderTask = BoxFuture<'static, Result<(), io::Error>>;
 
 impl Responder {
-    fn setup_core() -> io::Result<(Runtime, ResponderTask, Responder)> {
-        let rt = Runtime::new()?;
-        let (responder, task) = Self::with_handle()?;
-        Ok((rt, task, responder))
-    }
 
-    //TODO: this should not create threads etc
-    pub fn new() -> io::Result<Responder> {
-        let (tx, rx) = std::sync::mpsc::sync_channel(0);
-        thread::Builder::new()
-            .name("mdns-responder".to_owned())
-            .spawn(move || match Self::setup_core() {
-                Ok((mut core, task, responder)) => {
-                    tx.send(Ok(responder)).expect("tx responder channel closed");
-                    core.block_on(task).expect("mdns thread failed");
-                }
-                Err(err) => {
-                    tx.send(Err(err)).expect("tx responder channel closed");
-                }
-            })?;
+    pub async fn new() -> io::Result<Responder> {
+        let (mut tx, mut rx) = futures::channel::mpsc::channel(0);
 
-        rx.recv().expect("rx responder channel closed")
-    }
+        let (responder,task) = Self::with_handle()?;
 
-    pub fn spawn(handle: &Handle) -> io::Result<Responder> {
-        let (responder, task) = Responder::with_handle()?;
-        handle.spawn(task.map_err(|e| {
-            warn!("mdns error {:?}", e);
-        }));
-        Ok(responder)
+        tokio::spawn(task);
+
+        tx.send(Ok(responder)).await.expect("tx responder channel closed");
+        rx.next().await.expect("rx responder channel closed")
     }
 
     pub fn with_handle() -> io::Result<(Responder, ResponderTask)> {

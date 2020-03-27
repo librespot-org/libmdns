@@ -1,18 +1,15 @@
-extern crate env_logger;
-extern crate libmdns;
+use env_logger;
+use libmdns;
 
-pub fn main() {
+#[tokio::main]
+pub async fn main() {
     env_logger::init();
 
-    let responder = libmdns::Responder::new().unwrap();
-    let _svc = responder.register(
+    let responder = libmdns::Responder::new().await.unwrap();
+    let svc = responder.register(
         "_http._tcp".to_owned(),
         "libmdns Web Server".to_owned(),
         80,
         &["path=/"],
     );
-
-    loop {
-        ::std::thread::sleep(::std::time::Duration::from_secs(10));
-    }
 }
