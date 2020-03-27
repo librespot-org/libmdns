@@ -56,7 +56,6 @@ impl<AF: AddressFamily> FSM<AF> {
     }
 }
 
-
 #[pin_project::project]
 impl<AF: AddressFamily> FSM<AF> {
 
@@ -227,7 +226,7 @@ impl<AF: AddressFamily> FSM<AF> {
 
 
     fn poll_project(&mut self, ctx: &mut std::task::Context) -> Poll<Result<(),io::Error>> {
-
+        debug!("Poll");
         while let Ok(cmd) = self.commands.try_next() {
             match cmd {
                 Some(Command::Shutdown) => return Poll::Ready(Ok(())),
@@ -247,8 +246,8 @@ impl<AF: AddressFamily> FSM<AF> {
 
         self.recv_packets(ctx)?;
 
-        loop {
-            if let Some(&(ref response, ref addr)) = self.outgoing.front() {
+
+         while let Some(&(ref response, ref addr)) = self.outgoing.front() {
                 trace!("sending packet to {:?}", addr);
 
                 match self.socket.poll_send_to(ctx, response, addr) {
@@ -261,7 +260,6 @@ impl<AF: AddressFamily> FSM<AF> {
                     }
                     Poll::Pending => break,
                 }
-            }
         }
 
         Poll::Pending

@@ -17,7 +17,7 @@ log = "0.4.8"
 multimap = "0.8.0"
 net2 = "0.2.33"
 rand = "0.7.3"
-tokio = { version = "0.2.13", features = ["udp","stream","io-driver","io-std","macros"] }
+tokio = { version = "0.2.13", features = ["udp","stream","io-driver","io-std","macros","signal"] }
 quick-error = "1.2.3"
 pin-project = "0.4.8"
 

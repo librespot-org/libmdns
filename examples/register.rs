@@ -12,4 +12,6 @@ pub async fn main() {
         80,
         &["path=/"],
     );
+
+    tokio::signal::ctrl_c().await.unwrap();
 }

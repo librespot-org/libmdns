@@ -52,14 +52,11 @@ type ResponderTask = BoxFuture<'static, Result<(), io::Error>>;
 impl Responder {
 
     pub async fn new() -> io::Result<Responder> {
-        let (mut tx, mut rx) = futures::channel::mpsc::channel(0);
-
         let (responder,task) = Self::with_handle()?;
 
         tokio::spawn(task);
 
-        tx.send(Ok(responder)).await.expect("tx responder channel closed");
-        rx.next().await.expect("rx responder channel closed")
+        Ok(responder)
     }
 
     pub fn with_handle() -> io::Result<(Responder, ResponderTask)> {
