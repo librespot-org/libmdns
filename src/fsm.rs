@@ -226,7 +226,6 @@ impl<AF: AddressFamily> FSM<AF> {
 
 
     fn poll_project(&mut self, ctx: &mut std::task::Context) -> Poll<Result<(),io::Error>> {
-        debug!("Poll");
         while let Ok(cmd) = self.commands.try_next() {
             match cmd {
                 Some(Command::Shutdown) => return Poll::Ready(Ok(())),
