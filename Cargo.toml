@@ -22,4 +22,4 @@ tokio = {version = "0.2", features = ["sync","udp","stream","rt-core"]}
 quick-error = "1.2"
 
 [dev-dependencies]
-env_logger = "0.5"
+env_logger =  {version = "0.7", default-features = false, features = ["termcolor","humantime","atty"]} 
