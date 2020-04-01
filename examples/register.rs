@@ -1,5 +1,7 @@
 pub fn main() {
-    env_logger::init();
+    let mut builder = env_logger::Builder::new();
+    builder.parse_filters("libmdns=debug");
+    builder.init();
 
     let responder = libmdns::Responder::new().unwrap();
     let _svc = responder.register(

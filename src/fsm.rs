@@ -12,7 +12,7 @@ use std::{
     task::{Context, Poll},
 };
 
-use tokio::{net::UdpSocket, runtime::Handle, stream::Stream, sync::mpsc};
+use tokio::{net::UdpSocket, stream::Stream, sync::mpsc};
 
 use super::{DEFAULT_TTL, MDNS_PORT};
 use crate::address_family::AddressFamily;
@@ -39,16 +39,10 @@ pub struct FSM<AF: AddressFamily> {
 }
 
 impl<AF: AddressFamily> FSM<AF> {
-    pub fn new(
-        handle: &Handle,
-        services: &Services,
-    ) -> io::Result<(FSM<AF>, mpsc::UnboundedSender<Command>)> {
-        let socket = handle.enter(move || {
-            let std_socket = AF::bind().unwrap();
-            let socket = UdpSocket::from_std(std_socket).unwrap();
-
-            socket
-        });
+    // Will panic if called from outside the context of a runtime
+    pub fn new(services: &Services) -> io::Result<(FSM<AF>, mpsc::UnboundedSender<Command>)> {
+        let std_socket = AF::bind()?;
+        let socket = UdpSocket::from_std(std_socket)?;
 
         let (tx, rx) = mpsc::unbounded_channel();
 

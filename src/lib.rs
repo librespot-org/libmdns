@@ -42,44 +42,29 @@ pub struct Service {
 type ResponderTask = Box<dyn Future<Output = ()> + Send + Unpin>;
 
 impl Responder {
-    fn setup_core() -> io::Result<(Runtime, ResponderTask, Responder)> {
-        let rt = Runtime::new().unwrap();
-        let handle = rt.handle();
-        let (responder, task) = Self::with_handle(handle)?;
-        Ok((rt, task, responder))
-    }
-
     pub fn new() -> io::Result<Responder> {
         let (tx, rx) = std::sync::mpsc::sync_channel(0);
         thread::Builder::new()
             .name("mdns-responder".to_owned())
-            .spawn(move || match Self::setup_core() {
-                Ok((mut core, task, responder)) => {
+            .spawn(move || {
+                let mut rt = Runtime::new().unwrap();
+                rt.block_on(async {
+                    let (responder, task) = Self::with_default_handle()?;
                     tx.send(Ok(responder)).expect("tx responder channel closed");
-                    core.block_on(task);
-                }
-                Err(err) => {
-                    tx.send(Err(err)).expect("tx responder channel closed");
-                }
+                    task.await;
+                    Ok::<(), io::Error>(())
+                })
             })?;
-
         rx.recv().expect("rx responder channel closed")
     }
 
     pub fn spawn(handle: &Handle) -> io::Result<Responder> {
-        let (responder, task) = Self::with_handle(handle)?;
-        handle.spawn(
-            task,
-            //     .map_err(|e| {
-            //     warn!("mdns error {:?}", e);
-            //     ()
-            // })
-        );
-        // .unwrap();
+        let (responder, task) = Self::with_default_handle()?;
+        handle.spawn(task);
         Ok(responder)
     }
 
-    pub fn with_handle(handle: &Handle) -> io::Result<(Responder, ResponderTask)> {
+    pub fn with_default_handle() -> io::Result<(Responder, ResponderTask)> {
         let mut hostname = match hostname::get() {
             Ok(s) => match s.into_string() {
                 Ok(s) => s,
@@ -98,8 +83,8 @@ impl Responder {
 
         let services = Arc::new(RwLock::new(ServicesInner::new(hostname)));
 
-        let v4 = FSM::<Inet>::new(&handle, &services);
-        let v6 = FSM::<Inet6>::new(&handle, &services);
+        let v4 = FSM::<Inet>::new(&services);
+        let v6 = FSM::<Inet6>::new(&services);
 
         let (task, commands): (ResponderTask, _) = match (v4, v6) {
             (Ok((v4_task, v4_command)), Ok((v6_task, v6_command))) => {
