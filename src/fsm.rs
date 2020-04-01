@@ -51,6 +51,8 @@ impl<AF: AddressFamily> FSM<AF> {
             _af: PhantomData,
         };
 
+        info!("Started {} fsm",if AF::v6() {"v6"} else {"v4"});
+
         Ok((fsm, tx))
     }
 }
