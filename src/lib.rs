@@ -15,7 +15,6 @@ extern crate tokio;
 
 use futures::channel::mpsc;
 use futures::future::{BoxFuture, FutureExt};
-use futures::*;
 use std::cell::RefCell;
 use std::io;
 use std::sync::{Arc, RwLock};
@@ -34,6 +33,35 @@ use crate::services::{ServiceData, Services, ServicesInner};
 const DEFAULT_TTL: u32 = 60;
 const MDNS_PORT: u16 = 5353;
 
+
+pub struct ResponderBuilder {
+    v4: bool,
+    v6: bool
+}
+
+impl ResponderBuilder  {
+    pub fn new() -> Self {
+        ResponderBuilder {
+            v4:true,
+            v6:true,
+        }
+    }
+
+    pub fn use_v6(mut self,use_v6: bool) -> Self {
+        self.v6 = use_v6;
+        self
+    }
+
+    pub fn use_v4(mut self,use_v4: bool) -> Self {
+        self.v4 = use_v4;
+        self
+    }
+
+    pub fn build(self) -> io::Result<Responder> {
+        Responder::start(self)
+    }
+}
+
 pub struct Responder {
     services: Services,
     commands: RefCell<CommandSender>,
@@ -51,14 +79,21 @@ type ResponderTask = BoxFuture<'static, Result<(), io::Error>>;
 
 impl Responder {
     pub fn new() -> io::Result<Responder> {
-        let (responder, task) = Self::with_handle()?;
+        Self::builder().build()
+    }
+    pub fn builder() -> ResponderBuilder {
+        ResponderBuilder::new()
+    }
+
+    fn start(builder: ResponderBuilder) -> io::Result<Self> {
+        let (responder, task) = Self::create_task(builder)?;
 
         tokio::spawn(task);
 
         Ok(responder)
     }
 
-    pub fn with_handle() -> io::Result<(Responder, ResponderTask)> {
+    fn create_task(builder: ResponderBuilder) -> io::Result<(Responder, ResponderTask)> {
         let mut hostname = match hostname::get() {
             Ok(s) => match s.into_string() {
                 Ok(s) => s,
@@ -77,11 +112,24 @@ impl Responder {
 
         let services = Arc::new(RwLock::new(ServicesInner::new(hostname)));
 
-        let v4 = FSM::<Inet>::new(&services);
-        let v6 = FSM::<Inet6>::new(&services);
+        let v4 = {
+            if builder.v4 {
+                Some(FSM::<Inet>::new(&services))
+            } else {
+                None
+            }
+        };
+
+        let v6 = {
+            if builder.v6 {
+                Some(FSM::<Inet6>::new(&services))
+            } else {
+                None
+            }
+        };
 
         let (task, commands): (ResponderTask, _) = match (v4, v6) {
-            (Ok((v4_task, v4_command)), Ok((v6_task, v6_command))) => {
+            (Some(Ok((v4_task, v4_command))), Some(Ok((v6_task, v6_command)))) => {
                 let task = futures::future::join(v4_task, v6_task)
                     .map(|_| Ok(()))
                     .boxed();
@@ -89,12 +137,27 @@ impl Responder {
                 (task, commands)
             }
 
-            (Ok((v4_task, v4_command)), Err(err)) => {
+            (Some(Ok((v4_task, v4_command))), Some(Err(err))) => {
                 warn!("Failed to register IPv6 receiver: {:?}", err);
                 (v4_task.boxed(), vec![v4_command])
             }
 
-            (Err(err), _) => return Err(err),
+            (Some(Err(err)),Some(Ok((v6_task, v6_command)))) => {
+                warn!("Failed to register IPv4 receiver: {:?}", err);
+                (v6_task.boxed(), vec![v6_command])
+            }
+
+            (None,Some(Ok((v6_task, v6_command)))) => {
+                (v6_task.boxed(), vec![v6_command])
+            }
+
+            (Some(Ok((v4_task, v4_command))),None) => {
+                (v4_task.boxed(), vec![v4_command])
+            }
+
+            (_, Some(Err(err))) => return Err(err),
+            (Some(Err(err)), _) => return Err(err),
+            (None,None) => panic!("No v4 or v6 responder configured")
         };
 
         let commands = CommandSender(commands);

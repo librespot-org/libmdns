@@ -5,7 +5,7 @@ use libmdns;
 pub async fn main() {
     env_logger::init();
 
-    let responder = libmdns::Responder::new().await.unwrap();
+    let responder = libmdns::Responder::new().unwrap();
     let svc = responder.register(
         "_http._tcp".to_owned(),
         "libmdns Web Server".to_owned(),
