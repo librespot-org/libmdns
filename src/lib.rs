@@ -33,26 +33,22 @@ use crate::services::{ServiceData, Services, ServicesInner};
 const DEFAULT_TTL: u32 = 60;
 const MDNS_PORT: u16 = 5353;
 
-
 pub struct ResponderBuilder {
     v4: bool,
-    v6: bool
+    v6: bool,
 }
 
-impl ResponderBuilder  {
+impl ResponderBuilder {
     pub fn new() -> Self {
-        ResponderBuilder {
-            v4:true,
-            v6:true,
-        }
+        ResponderBuilder { v4: true, v6: true }
     }
 
-    pub fn use_v6(mut self,use_v6: bool) -> Self {
+    pub fn use_v6(mut self, use_v6: bool) -> Self {
         self.v6 = use_v6;
         self
     }
 
-    pub fn use_v4(mut self,use_v4: bool) -> Self {
+    pub fn use_v4(mut self, use_v4: bool) -> Self {
         self.v4 = use_v4;
         self
     }
@@ -142,22 +138,18 @@ impl Responder {
                 (v4_task.boxed(), vec![v4_command])
             }
 
-            (Some(Err(err)),Some(Ok((v6_task, v6_command)))) => {
+            (Some(Err(err)), Some(Ok((v6_task, v6_command)))) => {
                 warn!("Failed to register IPv4 receiver: {:?}", err);
                 (v6_task.boxed(), vec![v6_command])
             }
 
-            (None,Some(Ok((v6_task, v6_command)))) => {
-                (v6_task.boxed(), vec![v6_command])
-            }
+            (None, Some(Ok((v6_task, v6_command)))) => (v6_task.boxed(), vec![v6_command]),
 
-            (Some(Ok((v4_task, v4_command))),None) => {
-                (v4_task.boxed(), vec![v4_command])
-            }
+            (Some(Ok((v4_task, v4_command))), None) => (v4_task.boxed(), vec![v4_command]),
 
             (_, Some(Err(err))) => return Err(err),
             (Some(Err(err)), _) => return Err(err),
-            (None,None) => panic!("No v4 or v6 responder configured")
+            (None, None) => panic!("No v4 or v6 responder configured"),
         };
 
         let commands = CommandSender(commands);

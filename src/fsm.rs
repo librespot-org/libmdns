@@ -41,6 +41,13 @@ impl<AF: AddressFamily> FSM<AF> {
     pub fn new(services: &Services) -> io::Result<(FSM<AF>, mpsc::UnboundedSender<Command>)> {
         let std_socket = AF::bind()?;
         let socket = UdpSocket::from_std(std_socket)?;
+
+        if AF::v6() {
+            socket.set_multicast_loop_v6(true)?;
+        } else {
+            socket.set_multicast_loop_v4(true)?;
+        }
+
         let (tx, rx) = mpsc::unbounded();
 
         let fsm = FSM {
@@ -51,7 +58,7 @@ impl<AF: AddressFamily> FSM<AF> {
             _af: PhantomData,
         };
 
-        info!("Started {} fsm",if AF::v6() {"v6"} else {"v4"});
+        info!("Started {} fsm", if AF::v6() { "v6" } else { "v4" });
 
         Ok((fsm, tx))
     }
@@ -59,21 +66,24 @@ impl<AF: AddressFamily> FSM<AF> {
 
 #[pin_project::project]
 impl<AF: AddressFamily> FSM<AF> {
-    fn recv_packets(&mut self, ctx: &mut std::task::Context) -> io::Result<()> {
+    fn recv_packets(&mut self, ctx: &mut std::task::Context) {
         let mut buf = [0u8; 4096];
 
-        match self.socket.poll_recv_from(ctx, &mut buf) {
-            Poll::Ready(Ok((bytes, addr))) => {
-                if bytes >= buf.len() {
-                    warn!("buffer too small for packet from {:?}", addr);
-                    Ok(())
-                } else {
-                    self.handle_packet(&buf[..bytes], addr);
-                    Ok(())
+        loop {
+            match self.socket.poll_recv_from(ctx, &mut buf) {
+                Poll::Ready(Ok((bytes, addr))) => {
+                    if bytes >= buf.len() {
+                        warn!("buffer too small for packet from {:?}", addr);
+                    } else {
+                        trace!("Handle packets");
+                        self.handle_packet(&buf[..bytes], addr);
+                    }
                 }
+                Poll::Ready(Err(err)) => {
+                    error!("Recv error {}", err);
+                }
+                _ => break,
             }
-            Poll::Ready(Err(err)) => Err(err),
-            _ => Ok(()),
         }
     }
 
@@ -89,7 +99,7 @@ impl<AF: AddressFamily> FSM<AF> {
         };
 
         if !packet.header.query {
-            trace!("received packet from {:?} with no query", addr);
+            trace!("received packet {:?} from {:?} with no query", packet, addr);
             return;
         }
 
@@ -239,7 +249,7 @@ impl<AF: AddressFamily> FSM<AF> {
             }
         }
 
-        self.recv_packets(ctx)?;
+        self.recv_packets(ctx);
 
         while let Some(&(ref response, ref addr)) = self.outgoing.front() {
             trace!("sending packet to {:?}", addr);
