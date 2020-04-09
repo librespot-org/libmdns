@@ -30,6 +30,16 @@ pub enum Command {
     Shutdown,
 }
 
+quick_error! {
+#[derive(Debug)]
+pub enum Error {
+    BufferTooSmall(bytes: usize, size: usize) {
+        description("buffer isn't big enough")
+        display("Incoming packet {}>{}", bytes, size)
+    }
+}
+}
+
 pub struct FSM<AF: AddressFamily> {
     socket: UdpSocket,
     services: Services,
@@ -59,21 +69,22 @@ impl<AF: AddressFamily> FSM<AF> {
 
     fn recv_packets(&mut self, cx: &mut Context) -> io::Result<()> {
         let mut buf = [0u8; 4096];
-
-        let (bytes, addr) = match self.socket.poll_recv_from(cx, &mut buf) {
-            Poll::Ready(Ok((bytes, addr))) => (bytes, addr),
-            Poll::Ready(Err(err)) => return Err(err),
-            Poll::Pending => return Ok(()),
-        };
-        // Is moot for certain platforms (Windows will throw a <10040> error)
-        if bytes >= buf.len() {
-            warn!("buffer too small for packet from {:?}", addr);
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!("Buffer to small {}>{}", bytes, buf.len()),
-            ));
+        loop {
+            let (bytes, addr) = match self.socket.poll_recv_from(cx, &mut buf) {
+                Poll::Ready(Ok((bytes, addr))) => (bytes, addr),
+                Poll::Ready(Err(err)) => return Err(err),
+                Poll::Pending => break,
+            };
+            // Is moot for certain platforms (Windows will throw a <10040> error from poll_recv)
+            if bytes >= buf.len() {
+                warn!("buffer too small for packet from {:?}", addr);
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    Error::BufferTooSmall(bytes, buf.len()),
+                ));
+            }
+            self.handle_packet(&buf[..bytes], addr);
         }
-        self.handle_packet(&buf[..bytes], addr);
 
         Ok(())
     }
