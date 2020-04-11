@@ -92,7 +92,6 @@ pub enum QueryType {
     All = 255,
 }
 
-
 /// The CLASS value according to RFC 1035
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum Class {
@@ -171,12 +170,12 @@ impl From<u8> for ResponseCode {
     fn from(code: u8) -> ResponseCode {
         use self::ResponseCode::*;
         match code {
-            0      => NoError,
-            1      => FormatError,
-            2      => ServerFailure,
-            3      => NameError,
-            4      => NotImplemented,
-            5      => Refused,
+            0 => NoError,
+            1 => FormatError,
+            2 => ServerFailure,
+            3 => NameError,
+            4 => NotImplemented,
+            5 => Refused,
             6..=15 => Reserved(code),
             x => panic!("Invalid response code {}", x),
         }
@@ -201,23 +200,23 @@ impl QueryType {
     pub fn parse(code: u16) -> Result<QueryType, Error> {
         use self::QueryType::*;
         match code {
-            1   => Ok(A),
-            2   => Ok(NS),
-            4   => Ok(MF),
-            5   => Ok(CNAME),
-            6   => Ok(SOA),
-            7   => Ok(MB),
-            8   => Ok(MG),
-            9   => Ok(MR),
-            10  => Ok(NULL),
-            11  => Ok(WKS),
-            12  => Ok(PTR),
-            13  => Ok(HINFO),
-            14  => Ok(MINFO),
-            15  => Ok(MX),
-            16  => Ok(TXT),
-            28  => Ok(AAAA),
-            33  => Ok(SRV),
+            1 => Ok(A),
+            2 => Ok(NS),
+            4 => Ok(MF),
+            5 => Ok(CNAME),
+            6 => Ok(SOA),
+            7 => Ok(MB),
+            8 => Ok(MG),
+            9 => Ok(MR),
+            10 => Ok(NULL),
+            11 => Ok(WKS),
+            12 => Ok(PTR),
+            13 => Ok(HINFO),
+            14 => Ok(MINFO),
+            15 => Ok(MX),
+            16 => Ok(TXT),
+            28 => Ok(AAAA),
+            33 => Ok(SRV),
             252 => Ok(AXFR),
             253 => Ok(MAILB),
             254 => Ok(MAILA),
@@ -231,10 +230,10 @@ impl QueryClass {
     pub fn parse(code: u16) -> Result<QueryClass, Error> {
         use self::QueryClass::*;
         match code {
-            1   => Ok(IN),
-            2   => Ok(CS),
-            3   => Ok(CH),
-            4   => Ok(HS),
+            1 => Ok(IN),
+            2 => Ok(CS),
+            3 => Ok(CH),
+            4 => Ok(HS),
             255 => Ok(Any),
             x => Err(Error::InvalidQueryClass(x)),
         }
@@ -245,24 +244,24 @@ impl Type {
     pub fn parse(code: u16) -> Result<Type, Error> {
         use self::Type::*;
         match code {
-            1   => Ok(A),
-            2   => Ok(NS),
-            4   => Ok(MF),
-            5   => Ok(CNAME),
-            6   => Ok(SOA),
-            7   => Ok(MB),
-            8   => Ok(MG),
-            9   => Ok(MR),
-            10  => Ok(NULL),
-            11  => Ok(WKS),
-            12  => Ok(PTR),
-            13  => Ok(HINFO),
-            14  => Ok(MINFO),
-            15  => Ok(MX),
-            16  => Ok(TXT),
-            28  => Ok(AAAA),
-            33  => Ok(SRV),
-            41  => Ok(OPT),
+            1 => Ok(A),
+            2 => Ok(NS),
+            4 => Ok(MF),
+            5 => Ok(CNAME),
+            6 => Ok(SOA),
+            7 => Ok(MB),
+            8 => Ok(MG),
+            9 => Ok(MR),
+            10 => Ok(NULL),
+            11 => Ok(WKS),
+            12 => Ok(PTR),
+            13 => Ok(HINFO),
+            14 => Ok(MINFO),
+            15 => Ok(MX),
+            16 => Ok(TXT),
+            28 => Ok(AAAA),
+            33 => Ok(SRV),
+            41 => Ok(OPT),
             x => Err(Error::InvalidType(x)),
         }
     }
@@ -272,10 +271,10 @@ impl Class {
     pub fn parse(code: u16) -> Result<Class, Error> {
         use self::Class::*;
         match code {
-            1   => Ok(IN),
-            2   => Ok(CS),
-            3   => Ok(CH),
-            4   => Ok(HS),
+            1 => Ok(IN),
+            2 => Ok(CS),
+            3 => Ok(CH),
+            4 => Ok(HS),
             x => Err(Error::InvalidClass(x)),
         }
     }

@@ -1,13 +1,13 @@
-use std::io;
+use std::borrow::Cow;
 use std::fmt;
 use std::fmt::Write;
-use std::str::from_utf8;
-use std::borrow::Cow;
 use std::hash;
+use std::io;
+use std::str::from_utf8;
 
 use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
 
-use super::{Error};
+use super::Error;
 
 /// The DNS name as stored in the original packet
 ///
@@ -26,7 +26,7 @@ pub enum Name<'a> {
 }
 
 impl<'a> Name<'a> {
-    pub fn scan(data: &'a[u8], original: &'a[u8]) -> Result<(Name<'a>, usize), Error> {
+    pub fn scan(data: &'a [u8], original: &'a [u8]) -> Result<(Name<'a>, usize), Error> {
         let mut pos = 0;
         loop {
             if data.len() <= pos {
@@ -34,22 +34,34 @@ impl<'a> Name<'a> {
             }
             let byte = data[pos];
             if byte == 0 {
-                return Ok((Name::FromPacket { labels: &data[..pos+1], original: original }, pos + 1));
+                return Ok((
+                    Name::FromPacket {
+                        labels: &data[..pos + 1],
+                        original: original,
+                    },
+                    pos + 1,
+                ));
             } else if byte & 0b1100_0000 == 0b1100_0000 {
-                if data.len() < pos+2 {
+                if data.len() < pos + 2 {
                     return Err(Error::UnexpectedEOF);
                 }
-                let off = (BigEndian::read_u16(&data[pos..pos+2])
-                           & !0b1100_0000_0000_0000) as usize;
+                let off =
+                    (BigEndian::read_u16(&data[pos..pos + 2]) & !0b1100_0000_0000_0000) as usize;
                 if off >= original.len() {
                     return Err(Error::UnexpectedEOF);
                 }
                 // Validate referred to location
                 Name::scan(&original[off..], original)?;
-                return Ok((Name::FromPacket { labels: &data[..pos+2], original: original }, pos + 2));
+                return Ok((
+                    Name::FromPacket {
+                        labels: &data[..pos + 2],
+                        original: original,
+                    },
+                    pos + 2,
+                ));
             } else if byte & 0b1100_0000 == 0 {
                 let end = pos + byte as usize + 1;
-                if from_utf8(&data[pos+1..end]).is_err() {
+                if from_utf8(&data[pos + 1..end]).is_err() {
                     return Err(Error::LabelIsNotAscii);
                 }
                 pos = end;
@@ -77,9 +89,12 @@ impl<'a> Name<'a> {
                         writer.write_u8(0)?;
                         return Ok(());
                     } else if byte & 0b1100_0000 == 0b1100_0000 {
-                        let off = (BigEndian::read_u16(&labels[pos..pos+2])
-                                   & !0b1100_0000_0000_0000) as usize;
-                        return Name::scan(&original[off..], original).unwrap().0.write_to(writer)
+                        let off = (BigEndian::read_u16(&labels[pos..pos + 2])
+                            & !0b1100_0000_0000_0000) as usize;
+                        return Name::scan(&original[off..], original)
+                            .unwrap()
+                            .0
+                            .write_to(writer);
                     } else if byte & 0b1100_0000 == 0 {
                         let end = pos + byte as usize + 1;
                         writer.write(&labels[pos..end])?;
@@ -116,19 +131,21 @@ impl<'a> fmt::Display for Name<'a> {
                     if byte == 0 {
                         return Ok(());
                     } else if byte & 0b1100_0000 == 0b1100_0000 {
-                        let off = (BigEndian::read_u16(&labels[pos..pos+2])
-                                   & !0b1100_0000_0000_0000) as usize;
+                        let off = (BigEndian::read_u16(&labels[pos..pos + 2])
+                            & !0b1100_0000_0000_0000) as usize;
                         if pos != 0 {
                             fmt.write_char('.')?;
                         }
                         return fmt::Display::fmt(
-                            &Name::scan(&original[off..], original).unwrap().0, fmt)
+                            &Name::scan(&original[off..], original).unwrap().0,
+                            fmt,
+                        );
                     } else if byte & 0b1100_0000 == 0 {
                         if pos != 0 {
                             fmt.write_char('.')?;
                         }
                         let end = pos + byte as usize + 1;
-                        fmt.write_str(from_utf8(&labels[pos+1..end]).unwrap())?;
+                        fmt.write_str(from_utf8(&labels[pos + 1..end]).unwrap())?;
                         pos = end;
                         continue;
                     } else {
@@ -137,20 +154,23 @@ impl<'a> fmt::Display for Name<'a> {
                 }
             }
 
-            Name::FromStr(ref name) => fmt.write_str(&name)
+            Name::FromStr(ref name) => fmt.write_str(&name),
         }
     }
 }
 
-impl <'a> hash::Hash for Name<'a> {
-    fn hash<H>(&self, state: &mut H) where H: hash::Hasher {
+impl<'a> hash::Hash for Name<'a> {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: hash::Hasher,
+    {
         let mut buffer = Vec::new();
         self.write_to(&mut buffer).unwrap();
         hash::Hash::hash(&buffer, state)
     }
 }
 
-impl <'a> PartialEq for Name<'a> {
+impl<'a> PartialEq for Name<'a> {
     fn eq(&self, other: &Name) -> bool {
         let mut buffer = Vec::new();
         self.write_to(&mut buffer).unwrap();
@@ -162,4 +182,4 @@ impl <'a> PartialEq for Name<'a> {
     }
 }
 
-impl <'a> Eq for Name<'a> {}
+impl<'a> Eq for Name<'a> {}
