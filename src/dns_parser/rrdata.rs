@@ -45,19 +45,19 @@ impl<'a> RRData<'a> {
             RRData::A(ip) => writer.write_u32::<BigEndian>(ip.into()),
 
             RRData::AAAA(ip) => {
-                for segment in ip.segments().into_iter() {
-                    try!(writer.write_u16::<BigEndian>(*segment));
+                for segment in ip.segments().iter() {
+                    writer.write_u16::<BigEndian>(*segment)?;
                 }
                 Ok(())
             }
             RRData::SRV { priority, weight, port, ref target } => {
-                try!(writer.write_u16::<BigEndian>(priority));
-                try!(writer.write_u16::<BigEndian>(weight));
-                try!(writer.write_u16::<BigEndian>(port));
+                writer.write_u16::<BigEndian>(priority)?;
+                writer.write_u16::<BigEndian>(weight)?;
+                writer.write_u16::<BigEndian>(port)?;
                 target.write_to(writer)
             }
             RRData::MX { preference, ref exchange } => {
-                try!(writer.write_u16::<BigEndian>(preference));
+                writer.write_u16::<BigEndian>(preference)?;
                 exchange.write_to(writer)
             }
             RRData::TXT(data) => writer.write_all(data),
@@ -92,13 +92,13 @@ impl<'a> RRData<'a> {
                 )))
             }
             Type::CNAME => {
-                Ok(RRData::CNAME(try!(Name::scan(rdata, original)).0))
+                Ok(RRData::CNAME(Name::scan(rdata, original)?.0))
             }
             Type::NS => {
-                Ok(RRData::NS(try!(Name::scan(rdata, original)).0))
+                Ok(RRData::NS(Name::scan(rdata, original)?.0))
             }
             Type::PTR => {
-                Ok(RRData::PTR(try!(Name::scan(rdata, original)).0))
+                Ok(RRData::PTR(Name::scan(rdata, original)?.0))
             }
             Type::MX => {
                 if rdata.len() < 3 {
@@ -106,7 +106,7 @@ impl<'a> RRData<'a> {
                 }
                 Ok(RRData::MX {
                     preference: BigEndian::read_u16(&rdata[..2]),
-                    exchange: try!(Name::scan(&rdata[2..], original)).0,
+                    exchange: Name::scan(&rdata[2..], original)?.0,
                 })
             }
             Type::SRV => {
@@ -117,7 +117,7 @@ impl<'a> RRData<'a> {
                     priority: BigEndian::read_u16(&rdata[..2]),
                     weight: BigEndian::read_u16(&rdata[2..4]),
                     port: BigEndian::read_u16(&rdata[4..6]),
-                    target: try!(Name::scan(&rdata[6..], original)).0,
+                    target: Name::scan(&rdata[6..], original)?.0,
                 })
             }
             Type::TXT => Ok(RRData::TXT(rdata)),

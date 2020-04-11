@@ -1,6 +1,3 @@
-extern crate env_logger;
-extern crate libmdns;
-
 pub fn main() {
     env_logger::init();
 

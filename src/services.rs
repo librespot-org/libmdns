@@ -1,4 +1,4 @@
-use dns_parser::{self, Name, QueryClass, RRData};
+use crate::dns_parser::{self, Name, QueryClass, RRData};
 use multimap::MultiMap;
 use rand::{thread_rng, Rng};
 use std::collections::HashMap;
