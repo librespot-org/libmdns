@@ -14,12 +14,6 @@ To use it, first add this to your `Cargo.toml`:
 libmdns = "0.2"
 ```
 
-Then, add this to your crate root:
-
-```rust
-extern crate libmdns;
-```
-
 Only the latest stable version of rust and cargo are officially supported for now.
 Please open an issue on GitHub if you need support for older versions.
 
