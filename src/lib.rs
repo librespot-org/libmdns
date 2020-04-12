@@ -1,12 +1,16 @@
-use futures::sync::mpsc;
-use futures::Future;
+use futures_util::{future, future::FutureExt};
 use log::warn;
 use std::cell::RefCell;
+use std::future::Future;
 use std::io;
+use std::marker::Unpin;
 use std::sync::{Arc, RwLock};
-use std::thread;
 
-use tokio::runtime::{current_thread::Handle, Runtime};
+use std::thread;
+use tokio::{
+    runtime::{Handle, Runtime},
+    sync::mpsc,
+};
 
 mod dns_parser;
 use crate::dns_parser::Name;
@@ -35,12 +39,13 @@ pub struct Service {
     _shutdown: Arc<Shutdown>,
 }
 
-type ResponderTask = Box<dyn Future<Item = (), Error = io::Error> + Send>;
+type ResponderTask = Box<dyn Future<Output = ()> + Send + Unpin>;
 
 impl Responder {
     fn setup_core() -> io::Result<(Runtime, ResponderTask, Responder)> {
         let rt = Runtime::new().unwrap();
-        let (responder, task) = Self::with_default_handle()?;
+        let handle = rt.handle();
+        let (responder, task) = Self::with_handle(handle)?;
         Ok((rt, task, responder))
     }
 
@@ -51,7 +56,7 @@ impl Responder {
             .spawn(move || match Self::setup_core() {
                 Ok((mut core, task, responder)) => {
                     tx.send(Ok(responder)).expect("tx responder channel closed");
-                    core.block_on(task).expect("mdns thread failed");
+                    core.block_on(task);
                 }
                 Err(err) => {
                     tx.send(Err(err)).expect("tx responder channel closed");
@@ -62,17 +67,19 @@ impl Responder {
     }
 
     pub fn spawn(handle: &Handle) -> io::Result<Responder> {
-        let (responder, task) = Self::with_default_handle()?;
-        handle
-            .spawn(task.map_err(|e| {
-                warn!("mdns error {:?}", e);
-                ()
-            }))
-            .unwrap();
+        let (responder, task) = Self::with_handle(handle)?;
+        handle.spawn(
+            task,
+            //     .map_err(|e| {
+            //     warn!("mdns error {:?}", e);
+            //     ()
+            // })
+        );
+        // .unwrap();
         Ok(responder)
     }
 
-    pub fn with_default_handle() -> io::Result<(Responder, ResponderTask)> {
+    pub fn with_handle(handle: &Handle) -> io::Result<(Responder, ResponderTask)> {
         let mut hostname = match hostname::get() {
             Ok(s) => match s.into_string() {
                 Ok(s) => s,
@@ -91,15 +98,13 @@ impl Responder {
 
         let services = Arc::new(RwLock::new(ServicesInner::new(hostname)));
 
-        let v4 = FSM::<Inet>::new(&services);
-        let v6 = FSM::<Inet6>::new(&services);
+        let v4 = FSM::<Inet>::new(&handle, &services);
+        let v6 = FSM::<Inet6>::new(&handle, &services);
 
         let (task, commands): (ResponderTask, _) = match (v4, v6) {
             (Ok((v4_task, v4_command)), Ok((v6_task, v6_command))) => {
-                let task = v4_task.join(v6_task).map(|((), ())| ());
-                let task = Box::new(task);
-                let commands = vec![v4_command, v6_command];
-                (task, commands)
+                let tasks = future::join(v4_task, v6_task).map(|((), ())| ());
+                (Box::new(tasks), vec![v4_command, v6_command])
             }
 
             (Ok((v4_task, v4_command)), Err(err)) => {
@@ -180,7 +185,7 @@ struct CommandSender(Vec<mpsc::UnboundedSender<Command>>);
 impl CommandSender {
     fn send(&mut self, cmd: Command) {
         for tx in self.0.iter_mut() {
-            tx.unbounded_send(cmd.clone()).expect("responder died");
+            tx.send(cmd.clone()).expect("responder died");
         }
     }
 
