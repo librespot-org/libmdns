@@ -8,8 +8,10 @@ use std::io;
 use std::io::ErrorKind::WouldBlock;
 use std::marker::PhantomData;
 use std::net::{IpAddr, SocketAddr};
-use tokio_core::net::UdpSocket;
-use tokio_core::reactor::Handle;
+
+use mio::Ready;
+use tokio::net::UdpSocket;
+use tokio::reactor::Handle;
 
 use super::{DEFAULT_TTL, MDNS_PORT};
 use crate::address_family::AddressFamily;
@@ -41,7 +43,7 @@ impl<AF: AddressFamily> FSM<AF> {
         services: &Services,
     ) -> io::Result<(FSM<AF>, mpsc::UnboundedSender<Command>)> {
         let std_socket = AF::bind()?;
-        let socket = UdpSocket::from_socket(std_socket, handle)?;
+        let socket = UdpSocket::from_std(std_socket, handle)?;
         let (tx, rx) = mpsc::unbounded();
 
         let fsm = FSM {
@@ -58,10 +60,11 @@ impl<AF: AddressFamily> FSM<AF> {
     fn recv_packets(&mut self) -> io::Result<()> {
         let mut buf = [0u8; 4096];
         loop {
-            let (bytes, addr) = match self.socket.recv_from(&mut buf) {
-                Ok((bytes, addr)) => (bytes, addr),
+            let (bytes, addr) = match self.socket.poll_recv_from(&mut buf) {
+                Ok(Async::Ready((bytes, addr))) => (bytes, addr),
                 Err(ref ioerr) if ioerr.kind() == WouldBlock => break,
                 Err(err) => return Err(err),
+                Ok(Async::NotReady) => break,
             };
 
             if bytes >= buf.len() {
@@ -240,7 +243,7 @@ impl<AF: AddressFamily> Future for FSM<AF> {
             }
         }
 
-        while let Async::Ready(()) = self.socket.poll_read() {
+        while let Ok(Async::Ready(_)) = self.socket.poll_read_ready(Ready::readable()) {
             self.recv_packets()?;
         }
 
@@ -248,7 +251,7 @@ impl<AF: AddressFamily> Future for FSM<AF> {
             if let Some(&(ref response, ref addr)) = self.outgoing.front() {
                 trace!("sending packet to {:?}", addr);
 
-                match self.socket.send_to(response, addr) {
+                match self.socket.poll_send_to(response, addr) {
                     Ok(_) => (),
                     Err(ref ioerr) if ioerr.kind() == WouldBlock => break,
                     Err(err) => warn!("error sending packet {:?}", err),

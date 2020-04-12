@@ -18,7 +18,8 @@ log = "0.4"
 multimap = "0.4"
 net2 = "0.2"
 rand = "0.5"
-tokio-core = "0.1"
+tokio = "0.1"
+mio = "0.6.19"
 quick-error = "1.2"
 
 [dev-dependencies]
