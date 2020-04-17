@@ -7,15 +7,24 @@ libmdns is a pure rust implementation of the mDNS ([RFC 6762]) and DNS-SD ([RFC 
 
 ## Usage
 
-To use it, first add this to your `Cargo.toml`:
+To use it, add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-libmdns = "0.2"
+libmdns = "0.3"
 ```
 
-Only the latest stable version of rust and cargo are officially supported for now.
+See the [./examples/register.rs](example) to use within code.
+
+## Dependencies
+
+**Only the latest stable version of rust and cargo are officially supported for now.**
 Please open an issue on GitHub if you need support for older versions.
+
+libmdns is built with the help of the [tokio](https://github.com/tokio-rs/tokio) runtime.
+
+* `libmdns 0.3.x` (`tokio=0.1`)
+* `libmdns 0.2.x` (`tokio-core=0.1`)
 
 ## Provenance Note
 This project originally started as a fork of [plietar/rust-mdns](https://github.com/plietar/rust-mdns).
