@@ -14,7 +14,7 @@ To use it, add this to your `Cargo.toml`:
 libmdns = "0.4"
 ```
 
-See the [./examples/register.rs](example) to use within code.
+See the [example](https://github.com/librespot-org/libmdns/blob/stable-0.3.x/examples/register.rs) for use within code.
 
 ## Dependencies
 
