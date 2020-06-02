@@ -49,10 +49,13 @@ impl Responder {
             .spawn(move || {
                 let mut rt = Runtime::new().unwrap();
                 rt.block_on(async {
-                    let (responder, task) = Self::with_default_handle()?;
-                    tx.send(Ok(responder)).expect("tx responder channel closed");
-                    task.await;
-                    Ok::<(), io::Error>(())
+                    match Self::with_default_handle() {
+                        Ok((responder, task)) => {
+                            tx.send(Ok(responder)).expect("tx responder channel closed");
+                            task.await;
+                        }
+                        Err(e) => tx.send(Err(e)).expect("tx responder channel closed"),
+                    }
                 })
             })?;
         rx.recv().expect("rx responder channel closed")
