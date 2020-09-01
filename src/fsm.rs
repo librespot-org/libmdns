@@ -265,7 +265,8 @@ impl<AF: Unpin + AddressFamily> Future for FSM<AF> {
             trace!("sending packet to {:?}", addr);
 
             match pinned.socket.poll_send_to(cx, response, addr) {
-                Poll::Ready(Ok(_)) => (),
+                Poll::Ready(Ok(bytes_sent)) if bytes_sent == response.len() => break,
+                Poll::Ready(Ok(_)) => warn!("failed to send entire packet"),
                 Poll::Ready(Err(ref ioerr)) if ioerr.kind() == WouldBlock => break,
                 Poll::Ready(Err(err)) => warn!("error sending packet {:?}", err),
                 Poll::Pending => (break),
