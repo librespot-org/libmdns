@@ -1,7 +1,7 @@
 use dns_parser::{self, Name, QueryClass, QueryType, RRData};
 use futures::sync::mpsc;
 use futures::{Async, Future, Poll, Stream};
-use get_if_addrs::get_if_addrs;
+use if_addrs::get_if_addrs;
 use std::collections::VecDeque;
 use std::io;
 use std::io::ErrorKind::WouldBlock;
