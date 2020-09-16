@@ -1,5 +1,5 @@
 use crate::dns_parser::{self, Name, QueryClass, QueryType, RRData};
-use get_if_addrs::get_if_addrs;
+use if_addrs::get_if_addrs;
 use log::{debug, error, trace, warn};
 use quick_error::quick_error;
 use std::collections::VecDeque;
