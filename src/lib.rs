@@ -68,9 +68,13 @@ impl Responder {
     /// ```no_run
     /// use libmdns::Responder;
     ///
+    /// # use std::io;
+    /// # fn main() -> io::Result<()> {
     /// let rt = tokio::runtime::Runtime::new().unwrap();
     /// let handle = rt.handle().clone();
     /// let responder = Responder::spawn(&handle)?;
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn spawn(handle: &Handle) -> io::Result<Responder> {
         let (responder, task) = Self::with_default_handle()?;
@@ -135,6 +139,8 @@ impl Responder {
     /// ```no_run
     /// use libmdns::Responder;
     ///
+    /// # use std::io;
+    /// # fn main() -> io::Result<()> {
     /// let responder = Responder::new()?;
     /// // bind service
     /// let _http_svc = responder.register(
@@ -143,6 +149,8 @@ impl Responder {
     ///          80,
     ///          &["path=/"]
     ///      );
+    /// # Ok(())
+    /// # }
     /// ```
     #[must_use]
     pub fn register(&self, svc_type: String, svc_name: String, port: u16, txt: &[&str]) -> Service {
