@@ -11,7 +11,7 @@ edition = "2018"
 
 [dependencies]
 byteorder = "1.3"
-get_if_addrs = "0.5"
+get_if_addrs = { version = "0.5", git = "https://github.com/maidsafe-archive/get_if_addrs.git" }
 hostname = "0.3"
 log = "0.4"
 multimap = "0.8"
