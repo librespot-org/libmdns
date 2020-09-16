@@ -6,7 +6,7 @@ extern crate log;
 
 extern crate byteorder;
 extern crate futures;
-extern crate get_if_addrs;
+extern crate if_addrs;
 extern crate hostname;
 extern crate multimap;
 extern crate net2;
