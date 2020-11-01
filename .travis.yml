@@ -1,8 +1,12 @@
+os:
+    - windows
+    - linux
+    - osx
 language: rust
 rust:
+    - 1.40.0
     - stable
     - beta
-    - nightly
 
 jobs:
   allow_failures:

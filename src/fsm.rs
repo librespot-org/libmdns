@@ -261,17 +261,17 @@ impl<AF: Unpin + AddressFamily> Future for FSM<AF> {
             Err(e) => error!("ResponderRecvPacket Error: {:?}", e),
         }
 
-        while let Some(&(ref response, ref addr)) = pinned.outgoing.front() {
+        while let Some((ref response, ref addr)) = pinned.outgoing.pop_front() {
             trace!("sending packet to {:?}", addr);
 
             match pinned.socket.poll_send_to(cx, response, addr) {
-                Poll::Ready(Ok(_)) => (),
-                Poll::Ready(Err(ref ioerr)) if ioerr.kind() == WouldBlock => break,
+                Poll::Ready(Ok(bytes_sent)) if bytes_sent == response.len() => (),
+                Poll::Ready(Ok(_)) => warn!("failed to send entire packet"),
+                Poll::Ready(Err(ref ioerr)) if ioerr.kind() == WouldBlock => (),
                 Poll::Ready(Err(err)) => warn!("error sending packet {:?}", err),
-                Poll::Pending => (break),
+                Poll::Pending => (),
             }
         }
-        pinned.outgoing.pop_front();
 
         Poll::Pending
     }

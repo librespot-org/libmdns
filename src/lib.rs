@@ -42,6 +42,7 @@ pub struct Service {
 type ResponderTask = Box<dyn Future<Output = ()> + Send + Unpin>;
 
 impl Responder {
+    /// Spawn a responder task on an os thread.
     pub fn new() -> io::Result<Responder> {
         let (tx, rx) = std::sync::mpsc::sync_channel(0);
         thread::Builder::new()
@@ -61,12 +62,27 @@ impl Responder {
         rx.recv().expect("rx responder channel closed")
     }
 
+    /// Spawn a `Responder` with the provided tokio `Handle`.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use libmdns::Responder;
+    ///
+    /// # use std::io;
+    /// # fn main() -> io::Result<()> {
+    /// let rt = tokio::runtime::Runtime::new().unwrap();
+    /// let handle = rt.handle().clone();
+    /// let responder = Responder::spawn(&handle)?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn spawn(handle: &Handle) -> io::Result<Responder> {
         let (responder, task) = Self::with_default_handle()?;
         handle.spawn(task);
         Ok(responder)
     }
 
+    /// Spawn a `Responder` on the default tokio handle.
     pub fn with_default_handle() -> io::Result<(Responder, ResponderTask)> {
         let mut hostname = match hostname::get() {
             Ok(s) => match s.into_string() {
@@ -115,6 +131,28 @@ impl Responder {
 }
 
 impl Responder {
+    /// Register a service to be advertised by the `Responder`. The service is unregistered on
+    /// drop.
+    ///
+    /// # example
+    ///
+    /// ```no_run
+    /// use libmdns::Responder;
+    ///
+    /// # use std::io;
+    /// # fn main() -> io::Result<()> {
+    /// let responder = Responder::new()?;
+    /// // bind service
+    /// let _http_svc = responder.register(
+    ///          "_http._tcp".into(),
+    ///          "my http server".into(),
+    ///          80,
+    ///          &["path=/"]
+    ///      );
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
     pub fn register(&self, svc_type: String, svc_name: String, port: u16, txt: &[&str]) -> Service {
         let txt = if txt.is_empty() {
             vec![0]
