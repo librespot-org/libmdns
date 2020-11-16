@@ -11,6 +11,7 @@ pub trait AddressFamily {
         let addr = SockAddr::from(SocketAddr::new(Self::any_addr(), MDNS_PORT));
         let socket = Self::socket_builder()?;
         socket.set_reuse_address(true)?;
+        socket.set_nonblocking(true)?;
         #[cfg(not(windows))]
         let _ = socket.set_reuse_port(true)?;
         socket.bind(&addr)?;

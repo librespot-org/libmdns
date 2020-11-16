@@ -7,10 +7,7 @@ use std::marker::Unpin;
 use std::sync::{Arc, RwLock};
 
 use std::thread;
-use tokio::{
-    runtime::{Handle, Runtime},
-    sync::mpsc,
-};
+use tokio::{runtime::Handle, sync::mpsc};
 
 mod dns_parser;
 use crate::dns_parser::Name;
@@ -48,7 +45,10 @@ impl Responder {
         thread::Builder::new()
             .name("mdns-responder".to_owned())
             .spawn(move || {
-                let mut rt = Runtime::new().unwrap();
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap();
                 rt.block_on(async {
                     match Self::with_default_handle() {
                         Ok((responder, task)) => {
@@ -70,7 +70,7 @@ impl Responder {
     ///
     /// # use std::io;
     /// # fn main() -> io::Result<()> {
-    /// let rt = tokio::runtime::Runtime::new().unwrap();
+    /// let rt = tokio::runtime::Builder::new_current_thread().build().unwrap();
     /// let handle = rt.handle().clone();
     /// let responder = Responder::spawn(&handle)?;
     /// # Ok(())
