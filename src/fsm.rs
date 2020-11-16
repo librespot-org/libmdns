@@ -1,7 +1,6 @@
 use crate::dns_parser::{self, Name, QueryClass, QueryType, RRData};
 use if_addrs::get_if_addrs;
 use log::{debug, error, trace, warn};
-use quick_error::quick_error;
 use std::collections::VecDeque;
 use std::io;
 use std::io::ErrorKind::WouldBlock;
@@ -29,16 +28,6 @@ pub enum Command {
         include_ip: bool,
     },
     Shutdown,
-}
-
-quick_error! {
-#[derive(Debug)]
-pub enum Error {
-    BufferTooSmall(bytes: usize, size: usize) {
-        description("buffer isn't big enough")
-        display("Incoming packet {}>{}", bytes, size)
-    }
-}
 }
 
 pub struct FSM<AF: AddressFamily> {
@@ -77,16 +66,6 @@ impl<AF: AddressFamily> FSM<AF> {
                 Poll::Ready(Err(err)) => return Err(err),
                 Poll::Pending => break,
             };
-            // Is moot for certain platforms (Windows will throw a <10040> error from poll_recv)
-            /*
-            if bytes >= buf.len() {
-                warn!("buffer too small for packet from {:?}", addr);
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    Error::BufferTooSmall(bytes, buf.len()),
-                ));
-            }
-            */
             self.handle_packet(buf.filled(), addr);
         }
 
