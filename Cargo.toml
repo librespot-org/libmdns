@@ -15,11 +15,11 @@ if-addrs = "0.6"
 hostname = "0.3"
 log = "0.4"
 multimap = "0.8"
-rand = "0.7"
+rand = "0.8"
 futures-util = "0.3"
-tokio = { version = "0.3.4", features = ["sync","net","stream","rt"] }
+tokio = { version = "1.0", features = ["sync","net","rt"] }
 quick-error = "1.2"
 socket2 = { version = "0.3.16", features = ["reuseport"] }
 
 [dev-dependencies]
-env_logger =  { version = "0.7", default-features = false, features = ["termcolor","humantime","atty"] } 
+env_logger =  { version = "0.8", default-features = false, features = ["termcolor","humantime","atty"] } 

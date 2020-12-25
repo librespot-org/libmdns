@@ -12,7 +12,7 @@ use std::{
     task::{Context, Poll},
 };
 
-use tokio::{net::UdpSocket, stream::Stream, sync::mpsc};
+use tokio::{net::UdpSocket, sync::mpsc};
 
 use super::{DEFAULT_TTL, MDNS_PORT};
 use crate::address_family::AddressFamily;
@@ -221,7 +221,7 @@ impl<AF: Unpin + AddressFamily> Future for FSM<AF> {
     type Output = ();
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<()> {
         let pinned = Pin::get_mut(self);
-        while let Poll::Ready(cmd) = Pin::new(&mut pinned.commands).poll_next(cx) {
+        while let Poll::Ready(cmd) = Pin::new(&mut pinned.commands).poll_recv(cx) {
             match cmd {
                 Some(Command::Shutdown) => return Poll::Ready(()),
                 Some(Command::SendUnsolicited {
@@ -243,7 +243,7 @@ impl<AF: Unpin + AddressFamily> Future for FSM<AF> {
             Err(e) => error!("ResponderRecvPacket Error: {:?}", e),
         }
 
-        while let Some((ref response, ref addr)) = pinned.outgoing.pop_front() {
+        while let Some((ref response, addr)) = pinned.outgoing.pop_front() {
             trace!("sending packet to {:?}", addr);
 
             match pinned.socket.poll_send_to(cx, response, addr) {
