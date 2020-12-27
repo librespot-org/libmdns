@@ -11,10 +11,10 @@ To use it, add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-libmdns = "0.5"
+libmdns = "0.6"
 ```
 
-See the [example](https://github.com/librespot-org/libmdns/blob/stable-0.4.x/examples/register.rs) for use within code.
+See the [example](https://github.com/librespot-org/libmdns/blob/stable-0.6.x/examples/register.rs) for use within code.
 
 ## Dependencies
 
@@ -23,6 +23,7 @@ Please open an issue on GitHub if you need support for older versions.
 
 libmdns is built with the help of the [tokio](https://github.com/tokio-rs/tokio) runtime.
 
+* `libmdns 0.6.x` (`tokio=1.x`, `rustc>=1.45.2`)
 * `libmdns 0.5.x` (`tokio=0.3`, `rustc>=1.45.2`)
 * `libmdns 0.4.x` (`tokio=0.2`, `rustc>=1.40.0`)
 * `libmdns 0.3.x` (`tokio=0.1`, `rustc>=1.40.0`)
