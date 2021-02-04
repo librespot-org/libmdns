@@ -1,11 +1,11 @@
 use crate::dns_parser::{self, Name, QueryClass, QueryType, RRData};
-use pnet::datalink::{self};
 use log::{debug, error, trace, warn};
+use pnet::datalink::{self};
 use std::collections::VecDeque;
 use std::io;
 use std::io::ErrorKind::WouldBlock;
 use std::marker::PhantomData;
-use std::net::{IpAddr,SocketAddr};
+use std::net::{IpAddr, SocketAddr};
 use std::{
     future::Future,
     pin::Pin,
@@ -167,29 +167,29 @@ impl<AF: AddressFamily> FSM<AF> {
     }
 
     fn add_ip_rr(&self, hostname: &Name, mut builder: AnswerBuilder, ttl: u32) -> AnswerBuilder {
-
         let interfaces = datalink::interfaces();
 
         for iface in interfaces {
             for ip in iface.ips {
                 match ip.ip() {
-                    IpAddr::V4(ip) if ip.is_loopback() || !ip.is_private() => {continue},
-                    IpAddr::V6(ip) if ip.is_loopback() => {continue},
-                    _ => ()
+                    IpAddr::V4(ip) if ip.is_loopback() || !ip.is_private() => continue,
+                    IpAddr::V6(ip) if ip.is_loopback() => continue,
+                    _ => (),
                 }
                 match ip.ip() {
                     IpAddr::V4(ip) if !AF::v6() => {
                         builder = builder.add_answer(hostname, QueryClass::IN, ttl, &RRData::A(ip));
-                        return builder
-                    }
-                    IpAddr::V6(ip) if AF::v6() => {
-                        builder = builder.add_answer(hostname, QueryClass::IN, ttl, &RRData::AAAA(ip));
                         return builder;
                     }
-                    _ => ()
+                    IpAddr::V6(ip) if AF::v6() => {
+                        builder =
+                            builder.add_answer(hostname, QueryClass::IN, ttl, &RRData::AAAA(ip));
+                        return builder;
+                    }
+                    _ => (),
                 }
             }
-        };
+        }
 
         builder
     }
