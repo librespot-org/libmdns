@@ -1,6 +1,6 @@
 use crate::dns_parser::{self, Name, QueryClass, QueryType, RRData};
-use if_addrs::get_if_addrs;
 use log::{debug, error, trace, warn};
+use pnet::datalink::{self};
 use std::collections::VecDeque;
 use std::io;
 use std::io::ErrorKind::WouldBlock;
@@ -167,28 +167,27 @@ impl<AF: AddressFamily> FSM<AF> {
     }
 
     fn add_ip_rr(&self, hostname: &Name, mut builder: AnswerBuilder, ttl: u32) -> AnswerBuilder {
-        let interfaces = match get_if_addrs() {
-            Ok(interfaces) => interfaces,
-            Err(err) => {
-                error!("could not get list of interfaces: {}", err);
-                return builder;
-            }
-        };
+        let interfaces = datalink::interfaces();
 
         for iface in interfaces {
-            if iface.is_loopback() {
-                continue;
-            }
-
-            trace!("found interface {:?}", iface);
-            match iface.ip() {
-                IpAddr::V4(ip) if !AF::v6() => {
-                    builder = builder.add_answer(hostname, QueryClass::IN, ttl, &RRData::A(ip))
+            for ip in iface.ips {
+                match ip.ip() {
+                    IpAddr::V4(ip) if ip.is_loopback() || !ip.is_private() => continue,
+                    IpAddr::V6(ip) if ip.is_loopback() => continue,
+                    _ => (),
                 }
-                IpAddr::V6(ip) if AF::v6() => {
-                    builder = builder.add_answer(hostname, QueryClass::IN, ttl, &RRData::AAAA(ip))
+                match ip.ip() {
+                    IpAddr::V4(ip) if !AF::v6() => {
+                        builder = builder.add_answer(hostname, QueryClass::IN, ttl, &RRData::A(ip));
+                        return builder;
+                    }
+                    IpAddr::V6(ip) if AF::v6() => {
+                        builder =
+                            builder.add_answer(hostname, QueryClass::IN, ttl, &RRData::AAAA(ip));
+                        return builder;
+                    }
+                    _ => (),
                 }
-                _ => (),
             }
         }
 
