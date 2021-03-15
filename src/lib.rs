@@ -157,13 +157,13 @@ impl Responder {
         let txt = if txt.is_empty() {
             vec![0]
         } else {
-            txt.into_iter()
+            txt.iter()
                 .flat_map(|entry| {
                     let entry = entry.as_bytes();
                     if entry.len() > 255 {
                         panic!("{:?} is too long for a TXT record", entry);
                     }
-                    std::iter::once(entry.len() as u8).chain(entry.into_iter().cloned())
+                    std::iter::once(entry.len() as u8).chain(entry.iter().cloned())
                 })
                 .collect()
         };
