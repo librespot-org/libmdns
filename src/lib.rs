@@ -84,18 +84,10 @@ impl Responder {
 
     /// Spawn a `Responder` on the default tokio handle.
     pub fn with_default_handle() -> io::Result<(Responder, ResponderTask)> {
-        let mut hostname = match hostname::get() {
-            Ok(s) => match s.into_string() {
-                Ok(s) => s,
-                Err(_) => {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        "Hostname not valid unicode",
-                    ))
-                }
-            },
-            Err(err) => return Err(err),
-        };
+        let mut hostname = hostname::get()?.into_string().map_err(|_| {
+            io::Error::new(io::ErrorKind::InvalidData, "Hostname not valid unicode")
+        })?;
+
         if !hostname.ends_with(".local") {
             hostname.push_str(".local");
         }
