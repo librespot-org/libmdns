@@ -19,7 +19,7 @@ rand = "0.8"
 futures-util = "0.3"
 tokio = { version = "1.0", features = ["sync","net","rt"] }
 quick-error = "1.2"
-socket2 = { version = "0.3.16", features = ["reuseport"] }
+socket2 = { version = "0.4.0", features = ["all"] }
 
 [dev-dependencies]
 env_logger =  { version = "0.8", default-features = false, features = ["termcolor","humantime","atty"] } 

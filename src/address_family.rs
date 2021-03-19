@@ -16,7 +16,7 @@ pub trait AddressFamily {
         let _ = socket.set_reuse_port(true)?;
         socket.bind(&addr)?;
         Self::join_multicast(&socket)?;
-        Ok(socket.into_udp_socket())
+        Ok(UdpSocket::from(socket))
     }
 
     fn socket_builder() -> io::Result<Socket>;
@@ -28,7 +28,7 @@ pub trait AddressFamily {
 
 impl AddressFamily for Inet {
     fn socket_builder() -> io::Result<Socket> {
-        Socket::new(Domain::ipv4(), Type::dgram(), Some(Protocol::udp()))
+        Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))
     }
     fn any_addr() -> IpAddr {
         IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0))
@@ -46,7 +46,7 @@ impl AddressFamily for Inet {
 
 impl AddressFamily for Inet6 {
     fn socket_builder() -> io::Result<Socket> {
-        Socket::new(Domain::ipv6(), Type::dgram(), Some(Protocol::udp()))
+        Socket::new(Domain::IPV6, Type::DGRAM, Some(Protocol::UDP))
     }
     fn any_addr() -> IpAddr {
         IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0))
