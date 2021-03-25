@@ -5,6 +5,7 @@ use std::future::Future;
 use std::io;
 use std::marker::Unpin;
 use std::sync::{Arc, RwLock};
+use std::sync::mpsc::SyncSender;
 
 use std::thread;
 use tokio::{runtime::Handle, sync::mpsc};
@@ -105,15 +106,15 @@ impl Responder {
         let v4 = FSM::<Inet>::new(&services);
         let v6 = FSM::<Inet6>::new(&services);
 
-        let (task, commands): (ResponderTask, _) = match (v4, v6) {
-            (Ok((v4_task, v4_command)), Ok((v6_task, v6_command))) => {
+        let (task, commands, shutdown): (ResponderTask, _, _) = match (v4, v6) {
+            (Ok((v4_task, v4_command, v4_shutdown)), Ok((v6_task, v6_command, v6_shutdown))) => {
                 let tasks = future::join(v4_task, v6_task).map(|((), ())| ());
-                (Box::new(tasks), vec![v4_command, v6_command])
+                (Box::new(tasks), vec![v4_command, v6_command], vec![v4_shutdown, v6_shutdown])
             }
 
-            (Ok((v4_task, v4_command)), Err(err)) => {
+            (Ok((v4_task, v4_command, v4_shutdown)), Err(err)) => {
                 warn!("Failed to register IPv6 receiver: {:?}", err);
-                (Box::new(v4_task), vec![v4_command])
+                (Box::new(v4_task), vec![v4_command], vec![v4_shutdown])
             }
 
             (Err(err), _) => return Err(err),
@@ -123,7 +124,7 @@ impl Responder {
         let responder = Responder {
             services: services,
             commands: RefCell::new(commands.clone()),
-            shutdown: Arc::new(Shutdown(commands)),
+            shutdown: Arc::new(Shutdown(commands, shutdown)),
         };
 
         Ok((responder, task))
@@ -197,12 +198,15 @@ impl Drop for Service {
     }
 }
 
-struct Shutdown(CommandSender);
+struct Shutdown(CommandSender, Vec<SyncSender<bool>>);
 
 impl Drop for Shutdown {
     fn drop(&mut self) {
         self.0.send_shutdown();
-        // TODO wait for tasks to shutdown
+        for x in self.1.iter() {
+            // Blocks until service has acked the shutdown.
+            let _ = x.send(false).unwrap();
+        }
     }
 }
 

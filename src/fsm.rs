@@ -11,6 +11,7 @@ use std::{
     pin::Pin,
     task::{Context, Poll},
 };
+use std::sync::mpsc::{sync_channel, SyncSender, Receiver};
 
 use tokio::{net::UdpSocket, sync::mpsc};
 
@@ -31,6 +32,7 @@ pub enum Command {
 }
 
 pub struct FSM<AF: AddressFamily> {
+    shutdown_done: Receiver<bool>,
     socket: UdpSocket,
     services: Services,
     commands: mpsc::UnboundedReceiver<Command>,
@@ -40,13 +42,15 @@ pub struct FSM<AF: AddressFamily> {
 
 impl<AF: AddressFamily> FSM<AF> {
     // Will panic if called from outside the context of a runtime
-    pub fn new(services: &Services) -> io::Result<(FSM<AF>, mpsc::UnboundedSender<Command>)> {
+    pub fn new(services: &Services) -> io::Result<(FSM<AF>, mpsc::UnboundedSender<Command>, SyncSender<bool>)> {
         let std_socket = AF::bind()?;
         let socket = UdpSocket::from_std(std_socket)?;
 
         let (tx, rx) = mpsc::unbounded_channel();
+        let (tx_fin, rx_fin) = sync_channel::<bool>(0);
 
         let fsm = FSM {
+            shutdown_done: rx_fin,
             socket: socket,
             services: services.clone(),
             commands: rx,
@@ -54,7 +58,7 @@ impl<AF: AddressFamily> FSM<AF> {
             _af: PhantomData,
         };
 
-        Ok((fsm, tx))
+        Ok((fsm, tx, tx_fin))
     }
 
     fn recv_packets(&mut self, cx: &mut Context) -> io::Result<()> {
@@ -221,9 +225,13 @@ impl<AF: Unpin + AddressFamily> Future for FSM<AF> {
     type Output = ();
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<()> {
         let pinned = Pin::get_mut(self);
+        let mut shutdown = false;
         while let Poll::Ready(cmd) = Pin::new(&mut pinned.commands).poll_recv(cx) {
             match cmd {
-                Some(Command::Shutdown) => return Poll::Ready(()),
+                Some(Command::Shutdown) => {
+                    shutdown = true;
+                    break;
+                }
                 Some(Command::SendUnsolicited {
                     svc,
                     ttl,
@@ -238,9 +246,11 @@ impl<AF: Unpin + AddressFamily> Future for FSM<AF> {
             }
         }
 
-        match pinned.recv_packets(cx) {
-            Ok(_) => (),
-            Err(e) => error!("ResponderRecvPacket Error: {:?}", e),
+        if !shutdown {
+            match pinned.recv_packets(cx) {
+                Ok(_) => (),
+                Err(e) => error!("ResponderRecvPacket Error: {:?}", e),
+            }
         }
 
         while let Some((ref response, addr)) = pinned.outgoing.pop_front() {
@@ -253,6 +263,11 @@ impl<AF: Unpin + AddressFamily> Future for FSM<AF> {
                 Poll::Ready(Err(err)) => warn!("error sending packet {:?}", err),
                 Poll::Pending => (),
             }
+        }
+
+        if shutdown {
+            pinned.shutdown_done.recv().unwrap();
+            return Poll::Ready(());
         }
 
         Poll::Pending
