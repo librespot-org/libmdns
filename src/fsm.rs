@@ -11,7 +11,6 @@ use std::{
     pin::Pin,
     task::{Context, Poll},
 };
-use std::sync::mpsc::{sync_channel, SyncSender, Receiver};
 
 use tokio::{net::UdpSocket, sync::mpsc};
 
@@ -32,7 +31,6 @@ pub enum Command {
 }
 
 pub struct FSM<AF: AddressFamily> {
-    shutdown_done: Receiver<bool>,
     socket: UdpSocket,
     services: Services,
     commands: mpsc::UnboundedReceiver<Command>,
@@ -42,15 +40,13 @@ pub struct FSM<AF: AddressFamily> {
 
 impl<AF: AddressFamily> FSM<AF> {
     // Will panic if called from outside the context of a runtime
-    pub fn new(services: &Services) -> io::Result<(FSM<AF>, mpsc::UnboundedSender<Command>, SyncSender<bool>)> {
+    pub fn new(services: &Services) -> io::Result<(FSM<AF>, mpsc::UnboundedSender<Command>)> {
         let std_socket = AF::bind()?;
         let socket = UdpSocket::from_std(std_socket)?;
 
         let (tx, rx) = mpsc::unbounded_channel();
-        let (tx_fin, rx_fin) = sync_channel::<bool>(0);
 
         let fsm = FSM {
-            shutdown_done: rx_fin,
             socket: socket,
             services: services.clone(),
             commands: rx,
@@ -58,7 +54,7 @@ impl<AF: AddressFamily> FSM<AF> {
             _af: PhantomData,
         };
 
-        Ok((fsm, tx, tx_fin))
+        Ok((fsm, tx))
     }
 
     fn recv_packets(&mut self, cx: &mut Context) -> io::Result<()> {
@@ -266,7 +262,7 @@ impl<AF: Unpin + AddressFamily> Future for FSM<AF> {
         }
 
         if shutdown {
-            pinned.shutdown_done.recv().unwrap();
+            trace!("shutting down {:?}", std::any::type_name::<AF>());
             return Poll::Ready(());
         }
 

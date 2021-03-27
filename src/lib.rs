@@ -1,11 +1,10 @@
 use futures_util::{future, future::FutureExt};
-use log::warn;
+use log::{trace, warn};
 use std::cell::RefCell;
 use std::future::Future;
 use std::io;
 use std::marker::Unpin;
 use std::sync::{Arc, RwLock};
-use std::sync::mpsc::SyncSender;
 
 use std::thread;
 use tokio::{runtime::Handle, sync::mpsc};
@@ -27,14 +26,13 @@ const MDNS_PORT: u16 = 5353;
 pub struct Responder {
     services: Services,
     commands: RefCell<CommandSender>,
-    shutdown: Arc<Shutdown>,
+    shutdown: Shutdown,
 }
 
 pub struct Service {
     id: usize,
     services: Services,
     commands: CommandSender,
-    _shutdown: Arc<Shutdown>,
 }
 
 type ResponderTask = Box<dyn Future<Output = ()> + Send + Unpin>;
@@ -43,7 +41,7 @@ impl Responder {
     /// Spawn a responder task on an os thread.
     pub fn new() -> io::Result<Responder> {
         let (tx, rx) = std::sync::mpsc::sync_channel(0);
-        thread::Builder::new()
+        let join_handle = thread::Builder::new()
             .name("mdns-responder".to_owned())
             .spawn(move || {
                 let rt = tokio::runtime::Builder::new_current_thread()
@@ -60,7 +58,14 @@ impl Responder {
                     }
                 })
             })?;
-        rx.recv().expect("rx responder channel closed")
+        let responder = rx.recv().expect("rx responder channel closed");
+        match responder{
+            Ok(mut responder) => {
+                responder.shutdown.1 = Some(join_handle);
+                return Ok(responder);
+            },
+            Err(err) => return Err(err),
+        }
     }
 
     /// Spawn a `Responder` with the provided tokio `Handle`.
@@ -106,15 +111,15 @@ impl Responder {
         let v4 = FSM::<Inet>::new(&services);
         let v6 = FSM::<Inet6>::new(&services);
 
-        let (task, commands, shutdown): (ResponderTask, _, _) = match (v4, v6) {
-            (Ok((v4_task, v4_command, v4_shutdown)), Ok((v6_task, v6_command, v6_shutdown))) => {
+        let (task, commands): (ResponderTask, _) = match (v4, v6) {
+            (Ok((v4_task, v4_command)), Ok((v6_task, v6_command))) => {
                 let tasks = future::join(v4_task, v6_task).map(|((), ())| ());
-                (Box::new(tasks), vec![v4_command, v6_command], vec![v4_shutdown, v6_shutdown])
+                (Box::new(tasks), vec![v4_command, v6_command])
             }
 
-            (Ok((v4_task, v4_command, v4_shutdown)), Err(err)) => {
+            (Ok((v4_task, v4_command)), Err(err)) => {
                 warn!("Failed to register IPv6 receiver: {:?}", err);
-                (Box::new(v4_task), vec![v4_command], vec![v4_shutdown])
+                (Box::new(v4_task), vec![v4_command])
             }
 
             (Err(err), _) => return Err(err),
@@ -124,7 +129,7 @@ impl Responder {
         let responder = Responder {
             services: services,
             commands: RefCell::new(commands.clone()),
-            shutdown: Arc::new(Shutdown(commands, shutdown)),
+            shutdown: Shutdown(commands, None),
         };
 
         Ok((responder, task))
@@ -186,7 +191,6 @@ impl Responder {
             id: id,
             commands: self.commands.borrow().clone(),
             services: self.services.clone(),
-            _shutdown: self.shutdown.clone(),
         }
     }
 }
@@ -198,14 +202,15 @@ impl Drop for Service {
     }
 }
 
-struct Shutdown(CommandSender, Vec<SyncSender<bool>>);
+struct Shutdown(CommandSender, Option<thread::JoinHandle<()>>);
 
 impl Drop for Shutdown {
     fn drop(&mut self) {
+        trace!("Shutting down...");
         self.0.send_shutdown();
-        for x in self.1.iter() {
-            // Blocks until service has acked the shutdown.
-            let _ = x.send(false).unwrap();
+
+        if let Some(handle) = self.1.take() {
+            handle.join().expect("failed to join thread");
         }
     }
 }
