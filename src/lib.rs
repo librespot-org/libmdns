@@ -103,10 +103,7 @@ impl Responder {
                 (Box::new(tasks), vec![v4_command, v6_command])
             }
 
-            (Ok((v4_task, v4_command)), Err(err)) => {
-                warn!("Failed to register IPv6 receiver: {:?}", err);
-                (Box::new(v4_task), vec![v4_command])
-            }
+            (Ok((v4_task, v4_command)), Err(err)) => (Box::new(v4_task), vec![v4_command]),
 
             (Err(err), _) => return Err(err),
         };
