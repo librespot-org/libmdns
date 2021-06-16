@@ -1,6 +1,7 @@
 use crate::dns_parser::{self, Name, QueryClass, QueryType, RRData};
 use if_addrs::get_if_addrs;
 use log::{debug, error, trace, warn};
+use socket2::Domain;
 use std::collections::VecDeque;
 use std::io;
 use std::io::ErrorKind::WouldBlock;
@@ -118,7 +119,7 @@ impl<AF: AddressFamily> FSM<AF> {
 
         if !multicast_builder.is_empty() {
             let response = multicast_builder.build().unwrap_or_else(|x| x);
-            let addr = SocketAddr::new(AF::mdns_group(), MDNS_PORT);
+            let addr = SocketAddr::new(AF::MDNS_GROUP.into(), MDNS_PORT);
             self.outgoing.push_back((response, addr));
         }
 
@@ -181,11 +182,11 @@ impl<AF: AddressFamily> FSM<AF> {
             }
 
             trace!("found interface {:?}", iface);
-            match iface.ip() {
-                IpAddr::V4(ip) if !AF::v6() => {
+            match (iface.ip(), AF::DOMAIN) {
+                (IpAddr::V4(ip), Domain::IPV4) => {
                     builder = builder.add_answer(hostname, QueryClass::IN, ttl, &RRData::A(ip))
                 }
-                IpAddr::V6(ip) if AF::v6() => {
+                (IpAddr::V6(ip), Domain::IPV6) => {
                     builder = builder.add_answer(hostname, QueryClass::IN, ttl, &RRData::AAAA(ip))
                 }
                 _ => (),
@@ -211,7 +212,7 @@ impl<AF: AddressFamily> FSM<AF> {
 
         if !builder.is_empty() {
             let response = builder.build().unwrap_or_else(|x| x);
-            let addr = SocketAddr::new(AF::mdns_group(), MDNS_PORT);
+            let addr = SocketAddr::new(AF::MDNS_GROUP.into(), MDNS_PORT);
             self.outgoing.push_back((response, addr));
         }
     }

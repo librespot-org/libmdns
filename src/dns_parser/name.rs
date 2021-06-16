@@ -97,7 +97,7 @@ impl<'a> Name<'a> {
                             .write_to(writer);
                     } else if byte & 0b1100_0000 == 0 {
                         let end = pos + byte as usize + 1;
-                        writer.write(&labels[pos..end])?;
+                        writer.write_all(&labels[pos..end])?;
                         pos = end;
                         continue;
                     } else {
@@ -111,7 +111,7 @@ impl<'a> Name<'a> {
                     assert!(part.len() < 63);
                     let ln = part.len() as u8;
                     writer.write_u8(ln)?;
-                    writer.write(part.as_bytes())?;
+                    writer.write_all(part.as_bytes())?;
                 }
                 writer.write_u8(0)?;
 
