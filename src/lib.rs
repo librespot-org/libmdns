@@ -58,14 +58,9 @@ impl Responder {
                     }
                 })
             })?;
-        let responder = rx.recv().expect("rx responder channel closed");
-        match responder{
-            Ok(mut responder) => {
-                responder.shutdown.1 = Some(join_handle);
-                return Ok(responder);
-            },
-            Err(err) => return Err(err),
-        }
+        let mut responder = rx.recv().expect("rx responder channel closed")?;
+        responder.shutdown.1 = Some(join_handle);
+        Ok(responder)
     }
 
     /// Spawn a `Responder` with the provided tokio `Handle`.
