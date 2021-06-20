@@ -1,5 +1,5 @@
 use futures_util::{future, future::FutureExt};
-use log::warn;
+use log::{trace, warn};
 use std::cell::RefCell;
 use std::future::Future;
 use std::io;
@@ -26,14 +26,13 @@ const MDNS_PORT: u16 = 5353;
 pub struct Responder {
     services: Services,
     commands: RefCell<CommandSender>,
-    shutdown: Arc<Shutdown>,
+    shutdown: Shutdown,
 }
 
 pub struct Service {
     id: usize,
     services: Services,
     commands: CommandSender,
-    _shutdown: Arc<Shutdown>,
 }
 
 type ResponderTask = Box<dyn Future<Output = ()> + Send + Unpin>;
@@ -42,7 +41,7 @@ impl Responder {
     /// Spawn a responder task on an os thread.
     pub fn new() -> io::Result<Responder> {
         let (tx, rx) = std::sync::mpsc::sync_channel(0);
-        thread::Builder::new()
+        let join_handle = thread::Builder::new()
             .name("mdns-responder".to_owned())
             .spawn(move || {
                 let rt = tokio::runtime::Builder::new_current_thread()
@@ -59,7 +58,9 @@ impl Responder {
                     }
                 })
             })?;
-        rx.recv().expect("rx responder channel closed")
+        let mut responder = rx.recv().expect("rx responder channel closed")?;
+        responder.shutdown.1 = Some(join_handle);
+        Ok(responder)
     }
 
     /// Spawn a `Responder` with the provided tokio `Handle`.
@@ -115,7 +116,7 @@ impl Responder {
         let responder = Responder {
             services: services,
             commands: RefCell::new(commands.clone()),
-            shutdown: Arc::new(Shutdown(commands)),
+            shutdown: Shutdown(commands, None),
         };
 
         Ok((responder, task))
@@ -177,7 +178,6 @@ impl Responder {
             id: id,
             commands: self.commands.borrow().clone(),
             services: self.services.clone(),
-            _shutdown: self.shutdown.clone(),
         }
     }
 }
@@ -189,12 +189,16 @@ impl Drop for Service {
     }
 }
 
-struct Shutdown(CommandSender);
+struct Shutdown(CommandSender, Option<thread::JoinHandle<()>>);
 
 impl Drop for Shutdown {
     fn drop(&mut self) {
+        trace!("Shutting down...");
         self.0.send_shutdown();
-        // TODO wait for tasks to shutdown
+
+        if let Some(handle) = self.1.take() {
+            handle.join().expect("failed to join thread");
+        }
     }
 }
 

@@ -222,9 +222,13 @@ impl<AF: Unpin + AddressFamily> Future for FSM<AF> {
     type Output = ();
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<()> {
         let pinned = Pin::get_mut(self);
+        let mut shutdown = false;
         while let Poll::Ready(cmd) = Pin::new(&mut pinned.commands).poll_recv(cx) {
             match cmd {
-                Some(Command::Shutdown) => return Poll::Ready(()),
+                Some(Command::Shutdown) => {
+                    shutdown = true;
+                    break;
+                }
                 Some(Command::SendUnsolicited {
                     svc,
                     ttl,
@@ -239,9 +243,11 @@ impl<AF: Unpin + AddressFamily> Future for FSM<AF> {
             }
         }
 
-        match pinned.recv_packets(cx) {
-            Ok(_) => (),
-            Err(e) => error!("ResponderRecvPacket Error: {:?}", e),
+        if !shutdown {
+            match pinned.recv_packets(cx) {
+                Ok(_) => (),
+                Err(e) => error!("ResponderRecvPacket Error: {:?}", e),
+            }
         }
 
         while let Some((ref response, addr)) = pinned.outgoing.pop_front() {
@@ -254,6 +260,11 @@ impl<AF: Unpin + AddressFamily> Future for FSM<AF> {
                 Poll::Ready(Err(err)) => warn!("error sending packet {:?}", err),
                 Poll::Pending => (),
             }
+        }
+
+        if shutdown {
+            trace!("shutting down {:?}", std::any::type_name::<AF>());
+            return Poll::Ready(());
         }
 
         Poll::Pending
