@@ -13,7 +13,7 @@ use std::{
     task::{Context, Poll},
 };
 
-use tokio::{net::UdpSocket, sync::mpsc};
+use tokio::{net::UdpSocket, sync::broadcast};
 
 use super::{DEFAULT_TTL, MDNS_PORT};
 use crate::address_family::AddressFamily;
@@ -22,30 +22,25 @@ use crate::services::{ServiceData, Services};
 pub type AnswerBuilder = dns_parser::Builder<dns_parser::Answers>;
 
 #[derive(Clone, Debug)]
-pub enum Command {
-    SendUnsolicited {
-        svc: ServiceData,
-        ttl: u32,
-        include_ip: bool,
-    },
-    Shutdown,
+pub struct UnsolicitedMessage {
+    svc: ServiceData,
+    ttl: u32,
+    include_ip: bool,
 }
 
 pub struct FSM<AF: AddressFamily> {
-    socket: UdpSocket,
+    socket: UdpSocket, ,
     services: Services,
-    commands: mpsc::UnboundedReceiver<Command>,
+    commands: broadcast::Receiver<UnsolicitedMessage>,
     outgoing: VecDeque<(Vec<u8>, SocketAddr)>,
     _af: PhantomData<AF>,
 }
 
 impl<AF: AddressFamily> FSM<AF> {
     // Will panic if called from outside the context of a runtime
-    pub fn new(services: &Services) -> io::Result<(FSM<AF>, mpsc::UnboundedSender<Command>)> {
+    pub fn new(services: &Services, rx: broadcast::Receiver<UnsolicitedMessage>) -> io::Result<(FSM<AF>)> {
         let std_socket = AF::bind()?;
         let socket = UdpSocket::from_std(std_socket)?;
-
-        let (tx, rx) = mpsc::unbounded_channel();
 
         let fsm = FSM {
             socket: socket,
@@ -55,7 +50,7 @@ impl<AF: AddressFamily> FSM<AF> {
             _af: PhantomData,
         };
 
-        Ok((fsm, tx))
+        Ok(fsm)
     }
 
     fn recv_packets(&mut self, cx: &mut Context) -> io::Result<()> {
@@ -225,11 +220,7 @@ impl<AF: Unpin + AddressFamily> Future for FSM<AF> {
         let mut shutdown = false;
         while let Poll::Ready(cmd) = Pin::new(&mut pinned.commands).poll_recv(cx) {
             match cmd {
-                Some(Command::Shutdown) => {
-                    shutdown = true;
-                    break;
-                }
-                Some(Command::SendUnsolicited {
+                Some(UnsolicitedMessage {
                     svc,
                     ttl,
                     include_ip,
@@ -237,8 +228,8 @@ impl<AF: Unpin + AddressFamily> Future for FSM<AF> {
                     pinned.send_unsolicited(&svc, ttl, include_ip);
                 }
                 None => {
-                    warn!("responder disconnected without shutdown");
-                    return Poll::Ready(());
+                    shutdown = true;
+                    break;
                 }
             }
         }
@@ -268,5 +259,31 @@ impl<AF: Unpin + AddressFamily> Future for FSM<AF> {
         }
 
         Poll::Pending
+    }
+}
+
+async fn respond_on<AF: AddressFamily>(socket: UdpSocket, services: &Services, rx: broadcast::Receiver<UnsolicitedMessage>) {
+    while {
+        let outgoing = VecDeque::new();
+
+        while {
+            let evt = rx.recv();
+            let msg = socket.recv_from(); 
+            select! {
+
+            };
+        }
+
+        while let Some((ref response, addr)) = outgoing.pop_front() {
+            trace!("sending packet to {:?}", addr);
+
+            match pinned.socket.poll_send_to(cx, response, addr) {
+                Poll::Ready(Ok(bytes_sent)) if bytes_sent == response.len() => (),
+                Poll::Ready(Ok(_)) => warn!("failed to send entire packet"),
+                Poll::Ready(Err(ref ioerr)) if ioerr.kind() == WouldBlock => (),
+                Poll::Ready(Err(err)) => warn!("error sending packet {:?}", err),
+                Poll::Pending => (),
+            }
+        }
     }
 }

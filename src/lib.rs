@@ -1,13 +1,12 @@
 use futures_util::{future, future::FutureExt};
 use log::{trace, warn};
-use std::cell::RefCell;
 use std::future::Future;
 use std::io;
 use std::marker::Unpin;
 use std::sync::{Arc, RwLock};
 
 use std::thread;
-use tokio::{runtime::Handle, sync::mpsc};
+use tokio::{runtime::Handle, sync::broadcast};
 
 mod dns_parser;
 use crate::dns_parser::Name;
@@ -17,22 +16,27 @@ mod fsm;
 mod services;
 
 use crate::address_family::{Inet, Inet6};
-use crate::fsm::{Command, FSM};
+use crate::fsm::{UnsolicitedMessage, FSM};
 use crate::services::{ServiceData, Services, ServicesInner};
 
 const DEFAULT_TTL: u32 = 60;
 const MDNS_PORT: u16 = 5353;
 
-pub struct Responder {
+struct ResponderInner {
     services: Services,
-    commands: RefCell<CommandSender>,
-    shutdown: Shutdown,
+    // These fields are ordered so commands drops first.
+    commands: CommandSender,
+    // Shutdown::drop will join the thread, so CommandSender must be dropped.
+    handle: Shutdown,
+}
+
+pub struct Responder {
+    inner: Arc<ResponderInner>,
 }
 
 pub struct Service {
     id: usize,
-    services: Services,
-    commands: CommandSender,
+    responder: Arc<ResponderInner>,
 }
 
 type ResponderTask = Box<dyn Future<Output = ()> + Send + Unpin>;
@@ -59,7 +63,7 @@ impl Responder {
                 })
             })?;
         let mut responder = rx.recv().expect("rx responder channel closed")?;
-        responder.shutdown.1 = Some(join_handle);
+        responder.shutdown.0 = Some(join_handle);
         Ok(responder)
     }
 
@@ -93,30 +97,30 @@ impl Responder {
             hostname.push_str(".local");
         }
 
+        let (tx, rx1) = broadcast::channel(32);
         let services = Arc::new(RwLock::new(ServicesInner::new(hostname)));
 
-        let v4 = FSM::<Inet>::new(&services);
-        let v6 = FSM::<Inet6>::new(&services);
+        let v4 = FSM::<Inet>::new(&services, rx1);
+        let v6 = FSM::<Inet6>::new(&services, tx.subscribe());
 
-        let (task, commands): (ResponderTask, _) = match (v4, v6) {
-            (Ok((v4_task, v4_command)), Ok((v6_task, v6_command))) => {
+        let task: ResponderTask = match (v4, v6) {
+            (Ok(v4_task), Ok(v6_task)) => {
                 let tasks = future::join(v4_task, v6_task).map(|((), ())| ());
-                (Box::new(tasks), vec![v4_command, v6_command])
+                Box::new(tasks)
             }
 
-            (Ok((v4_task, v4_command)), Err(err)) => {
+            (Ok(v4_task), Err(err)) => {
                 warn!("Failed to register IPv6 receiver: {:?}", err);
-                (Box::new(v4_task), vec![v4_command])
+                Box::new(v4_task)
             }
 
             (Err(err), _) => return Err(err),
         };
 
-        let commands = CommandSender(commands);
         let responder = Responder {
             services: services,
-            commands: RefCell::new(commands.clone()),
-            shutdown: Shutdown(commands, None),
+            commands: CommandSender(tx),
+            shutdown: None,
         };
 
         Ok((responder, task))
@@ -168,7 +172,7 @@ impl Responder {
             txt: txt,
         };
 
-        self.commands
+        self.responder.commands
             .borrow_mut()
             .send_unsolicited(svc.clone(), DEFAULT_TTL, true);
 
@@ -176,8 +180,7 @@ impl Responder {
 
         Service {
             id: id,
-            commands: self.commands.borrow().clone(),
-            services: self.services.clone(),
+            responder: self.responder.clone(),
         }
     }
 }
@@ -189,37 +192,26 @@ impl Drop for Service {
     }
 }
 
-struct Shutdown(CommandSender, Option<thread::JoinHandle<()>>);
+struct Shutdown(Option<thread::JoinHandle<()>>);
 
 impl Drop for Shutdown {
     fn drop(&mut self) {
         trace!("Shutting down...");
-        self.0.send_shutdown();
 
-        if let Some(handle) = self.1.take() {
+        if let Some(handle) = self.0 {
             handle.join().expect("failed to join thread");
         }
     }
 }
 
 #[derive(Clone)]
-struct CommandSender(Vec<mpsc::UnboundedSender<Command>>);
+struct CommandSender(broadcast::Sender<UnsolicitedMessage>);
 impl CommandSender {
-    fn send(&mut self, cmd: Command) {
-        for tx in self.0.iter_mut() {
-            tx.send(cmd.clone()).expect("responder died");
-        }
-    }
-
     fn send_unsolicited(&mut self, svc: ServiceData, ttl: u32, include_ip: bool) {
-        self.send(Command::SendUnsolicited {
+        self.0.send(UnsolicitedMessage {
             svc: svc,
             ttl: ttl,
             include_ip: include_ip,
-        });
-    }
-
-    fn send_shutdown(&mut self) {
-        self.send(Command::Shutdown);
+        }).expect("responder stopped");
     }
 }
