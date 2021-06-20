@@ -14,7 +14,11 @@ class MyListener:
         return name in self.found
 
     def add_service(self, zeroconf, type, name):
+        print(f"  Service {name} added")
         self.found.append(name.replace("." + TYPE, ""))
+
+    def remove_service(self, zeroconf, type, name):
+        print(f"  Service {name} removed")
 
 
 zeroconf = Zeroconf()
