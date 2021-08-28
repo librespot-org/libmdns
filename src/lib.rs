@@ -18,7 +18,7 @@ use crate::dns_parser::Name;
 
 mod address_family;
 mod fsm;
-mod host;
+pub mod host;
 mod services;
 
 use crate::address_family::{Inet, Inet6};
