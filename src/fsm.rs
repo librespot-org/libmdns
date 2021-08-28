@@ -1,5 +1,5 @@
-use crate::dns_parser::{self, Name, QueryClass, QueryType, RRData};
-use if_addrs::get_if_addrs;
+use crate::dns_parser::{self, QueryClass, QueryType, RRData};
+use crate::host::HostData;
 use log::{debug, error, trace, warn};
 use socket2::Domain;
 use std::collections::VecDeque;
@@ -137,23 +137,23 @@ impl<AF: AddressFamily> FSM<AF> {
         let services = self.services.read().unwrap();
 
         match question.qtype {
-            QueryType::A | QueryType::AAAA | QueryType::All
-                if question.qname == *services.get_hostname() =>
-            {
-                builder = self.add_ip_rr(services.get_hostname(), builder, DEFAULT_TTL);
+            QueryType::A | QueryType::AAAA | QueryType::All => {
+                if let Some(host) = services.find_host(&question.qname) {
+                    builder = self.add_ip_rr(host, builder, DEFAULT_TTL);
+                }
             }
             QueryType::PTR => {
                 for svc in services.find_by_type(&question.qname) {
                     builder = svc.add_ptr_rr(builder, DEFAULT_TTL);
-                    builder = svc.add_srv_rr(services.get_hostname(), builder, DEFAULT_TTL);
+                    builder = svc.add_srv_rr(builder, DEFAULT_TTL);
                     builder = svc.add_txt_rr(builder, DEFAULT_TTL);
-                    builder = self.add_ip_rr(services.get_hostname(), builder, DEFAULT_TTL);
+                    builder = self.add_ip_rr(svc.host.as_ref(), builder, DEFAULT_TTL);
                 }
             }
             QueryType::SRV => {
                 if let Some(svc) = services.find_by_name(&question.qname) {
-                    builder = svc.add_srv_rr(services.get_hostname(), builder, DEFAULT_TTL);
-                    builder = self.add_ip_rr(services.get_hostname(), builder, DEFAULT_TTL);
+                    builder = svc.add_srv_rr(builder, DEFAULT_TTL);
+                    builder = self.add_ip_rr(svc.host.as_ref(), builder, DEFAULT_TTL);
                 }
             }
             QueryType::TXT => {
@@ -167,22 +167,22 @@ impl<AF: AddressFamily> FSM<AF> {
         builder
     }
 
-    fn add_ip_rr(&self, hostname: &Name, mut builder: AnswerBuilder, ttl: u32) -> AnswerBuilder {
-        let interfaces = match get_if_addrs() {
-            Ok(interfaces) => interfaces,
+    fn add_ip_rr(
+        &self,
+        host: &dyn HostData,
+        mut builder: AnswerBuilder,
+        ttl: u32,
+    ) -> AnswerBuilder {
+        let ips = match host.get_ips() {
+            Ok(ips) => ips,
             Err(err) => {
-                error!("could not get list of interfaces: {}", err);
+                error!("could not get list of ips: {}", err);
                 return builder;
             }
         };
-
-        for iface in interfaces {
-            if iface.is_loopback() {
-                continue;
-            }
-
-            trace!("found interface {:?}", iface);
-            match (iface.ip(), AF::DOMAIN) {
+        let hostname = host.get_hostname();
+        for ip in ips {
+            match (ip, AF::DOMAIN) {
                 (IpAddr::V4(ip), Domain::IPV4) => {
                     builder = builder.add_answer(hostname, QueryClass::IN, ttl, &RRData::A(ip))
                 }
@@ -200,14 +200,11 @@ impl<AF: AddressFamily> FSM<AF> {
         let mut builder =
             dns_parser::Builder::new_response(0, false, true).move_to::<dns_parser::Answers>();
         builder.set_max_size(None);
-
-        let services = self.services.read().unwrap();
-
         builder = svc.add_ptr_rr(builder, ttl);
-        builder = svc.add_srv_rr(services.get_hostname(), builder, ttl);
+        builder = svc.add_srv_rr(builder, ttl);
         builder = svc.add_txt_rr(builder, ttl);
         if include_ip {
-            builder = self.add_ip_rr(services.get_hostname(), builder, ttl);
+            builder = self.add_ip_rr(svc.host.as_ref(), builder, ttl);
         }
 
         if !builder.is_empty() {

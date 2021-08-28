@@ -1,3 +1,4 @@
+use crate::host::{DefaultHostData, HostData};
 use futures_util::{future, future::FutureExt};
 use log::warn;
 use std::cell::RefCell;
@@ -9,11 +10,15 @@ use std::sync::{Arc, RwLock};
 use std::thread;
 use tokio::{runtime::Handle, sync::mpsc};
 
+#[macro_use]
+extern crate lazy_static;
+
 mod dns_parser;
 use crate::dns_parser::Name;
 
 mod address_family;
 mod fsm;
+mod host;
 mod services;
 
 use crate::address_family::{Inet, Inet6};
@@ -84,15 +89,7 @@ impl Responder {
 
     /// Spawn a `Responder` on the default tokio handle.
     pub fn with_default_handle() -> io::Result<(Responder, ResponderTask)> {
-        let mut hostname = hostname::get()?.into_string().map_err(|_| {
-            io::Error::new(io::ErrorKind::InvalidData, "Hostname not valid unicode")
-        })?;
-
-        if !hostname.ends_with(".local") {
-            hostname.push_str(".local");
-        }
-
-        let services = Arc::new(RwLock::new(ServicesInner::new(hostname)));
+        let services = Arc::new(RwLock::new(ServicesInner::new()));
 
         let v4 = FSM::<Inet>::new(&services);
         let v6 = FSM::<Inet6>::new(&services);
@@ -146,6 +143,24 @@ impl Responder {
     /// ```
     #[must_use]
     pub fn register(&self, svc_type: String, svc_name: String, port: u16, txt: &[&str]) -> Service {
+        self.register_with_custom_host(
+            svc_type,
+            svc_name,
+            DefaultHostData::get().unwrap(),
+            port,
+            txt,
+        )
+    }
+
+    #[must_use]
+    pub fn register_with_custom_host(
+        &self,
+        svc_type: String,
+        svc_name: String,
+        host: Arc<dyn HostData + Send + Sync>,
+        port: u16,
+        txt: &[&str],
+    ) -> Service {
         let txt = if txt.is_empty() {
             vec![0]
         } else {
@@ -165,6 +180,7 @@ impl Responder {
             name: Name::from_str(format!("{}.{}.local", svc_name, svc_type)).unwrap(),
             port: port,
             txt: txt,
+            host: host,
         };
 
         self.commands

@@ -1,7 +1,9 @@
 use crate::dns_parser::{self, Name, QueryClass, RRData};
+use crate::host::HostData;
 use multimap::MultiMap;
 use rand::{thread_rng, Rng};
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::slice;
 use std::sync::{Arc, RwLock};
 
@@ -11,7 +13,8 @@ pub type AnswerBuilder = dns_parser::Builder<dns_parser::Answers>;
 pub type Services = Arc<RwLock<ServicesInner>>;
 
 pub struct ServicesInner {
-    hostname: Name<'static>,
+    map_hostname: HashMap<Name<'static>, HostDataWithRefCount>,
+
     /// main index
     by_id: HashMap<usize, ServiceData>,
     /// maps to id
@@ -20,18 +23,23 @@ pub struct ServicesInner {
     by_name: HashMap<Name<'static>, usize>,
 }
 
+pub struct HostDataWithRefCount {
+    data: Arc<dyn HostData + Send + Sync>,
+    count: usize,
+}
+
 impl ServicesInner {
-    pub fn new(hostname: String) -> Self {
+    pub fn new() -> Self {
         ServicesInner {
-            hostname: Name::from_str(hostname).unwrap(),
+            map_hostname: HashMap::new(),
             by_id: HashMap::new(),
             by_type: MultiMap::new(),
             by_name: HashMap::new(),
         }
     }
 
-    pub fn get_hostname(&self) -> &Name<'static> {
-        &self.hostname
+    pub fn find_host<'a>(&'a self, name: &'a Name<'a>) -> Option<&(dyn HostData + Send + Sync)> {
+        self.map_hostname.get(name).map(|x| x.data.as_ref())
     }
 
     pub fn find_by_name<'a>(&'a self, name: &'a Name<'a>) -> Option<&ServiceData> {
@@ -55,6 +63,19 @@ impl ServicesInner {
 
         self.by_type.insert(svc.typ.clone(), id);
         self.by_name.insert(svc.name.clone(), id);
+
+        match self.map_hostname.get_mut(svc.host.get_hostname()) {
+            Some(host_inner) => host_inner.count += 1,
+            None => {
+                self.map_hostname.insert(
+                    svc.host.get_hostname().clone(),
+                    HostDataWithRefCount {
+                        data: svc.host.clone(),
+                        count: 1,
+                    },
+                );
+            }
+        }
         self.by_id.insert(id, svc);
 
         id
@@ -67,6 +88,14 @@ impl ServicesInner {
 
         if let Some(entries) = self.by_type.get_vec_mut(&svc.typ) {
             entries.retain(|&e| e != id);
+        }
+
+        let hostname = svc.host.get_hostname();
+        if let Some(host_inner) = self.map_hostname.get_mut(hostname) {
+            host_inner.count -= 1;
+            if host_inner.count == 0 {
+                self.map_hostname.remove(hostname);
+            }
         }
 
         match self.by_name.entry(svc.name.clone()) {
@@ -106,6 +135,7 @@ pub struct ServiceData {
     pub typ: Name<'static>,
     pub port: u16,
     pub txt: Vec<u8>,
+    pub host: Arc<dyn HostData + Send + Sync>,
 }
 
 /// Packet building helpers for `fsm` to respond with `ServiceData`
@@ -119,7 +149,7 @@ impl ServiceData {
         )
     }
 
-    pub fn add_srv_rr(&self, hostname: &Name, builder: AnswerBuilder, ttl: u32) -> AnswerBuilder {
+    pub fn add_srv_rr(&self, builder: AnswerBuilder, ttl: u32) -> AnswerBuilder {
         builder.add_answer(
             &self.name,
             QueryClass::IN,
@@ -128,7 +158,7 @@ impl ServiceData {
                 priority: 0,
                 weight: 0,
                 port: self.port,
-                target: hostname.clone(),
+                target: self.host.get_hostname().clone(),
             },
         )
     }
