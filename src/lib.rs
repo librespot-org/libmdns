@@ -63,7 +63,7 @@ impl Responder {
                 })
             })?;
         let mut responder = rx.recv().expect("rx responder channel closed")?;
-        responder.shutdown.0 = Some(join_handle);
+        responder.inner.handle.0 = Some(join_handle);
         Ok(responder)
     }
 
@@ -118,9 +118,11 @@ impl Responder {
         };
 
         let responder = Responder {
-            services: services,
-            commands: CommandSender(tx),
-            shutdown: None,
+            inner: Arc::new(ResponderInner {
+                services: services,
+                commands: CommandSender(tx),
+                handle: Shutdown(None),
+            }),
         };
 
         Ok((responder, task))
@@ -172,23 +174,22 @@ impl Responder {
             txt: txt,
         };
 
-        self.responder.commands
-            .borrow_mut()
+        self.inner.commands
             .send_unsolicited(svc.clone(), DEFAULT_TTL, true);
 
-        let id = self.services.write().unwrap().register(svc);
+        let id = self.inner.services.write().unwrap().register(svc);
 
         Service {
             id: id,
-            responder: self.responder.clone(),
+            responder: self.inner.clone(),
         }
     }
 }
 
 impl Drop for Service {
     fn drop(&mut self) {
-        let svc = self.services.write().unwrap().unregister(self.id);
-        self.commands.send_unsolicited(svc, 0, false);
+        let svc = self.responder.services.write().unwrap().unregister(self.id);
+        self.responder.commands.send_unsolicited(svc, 0, false);
     }
 }
 

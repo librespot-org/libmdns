@@ -29,7 +29,7 @@ pub struct UnsolicitedMessage {
 }
 
 pub struct FSM<AF: AddressFamily> {
-    socket: UdpSocket, ,
+    socket: UdpSocket,
     services: Services,
     commands: broadcast::Receiver<UnsolicitedMessage>,
     outgoing: VecDeque<(Vec<u8>, SocketAddr)>,
@@ -38,7 +38,7 @@ pub struct FSM<AF: AddressFamily> {
 
 impl<AF: AddressFamily> FSM<AF> {
     // Will panic if called from outside the context of a runtime
-    pub fn new(services: &Services, rx: broadcast::Receiver<UnsolicitedMessage>) -> io::Result<(FSM<AF>)> {
+    pub fn new(services: &Services, rx: broadcast::Receiver<UnsolicitedMessage>) -> io::Result<FSM<AF>> {
         let std_socket = AF::bind()?;
         let socket = UdpSocket::from_std(std_socket)?;
 
@@ -262,7 +262,7 @@ impl<AF: Unpin + AddressFamily> Future for FSM<AF> {
     }
 }
 
-async fn respond_on<AF: AddressFamily>(socket: UdpSocket, services: &Services, rx: broadcast::Receiver<UnsolicitedMessage>) {
+async fn respond_on/*<AF: AddressFamily>*/(socket: UdpSocket, services: &Services, rx: broadcast::Receiver<UnsolicitedMessage>) {
     while {
         let outgoing = VecDeque::new();
 
