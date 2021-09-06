@@ -27,8 +27,10 @@ pub trait AddressFamily {
         socket.set_reuse_address(true)?;
         socket.set_nonblocking(true)?;
 
-        #[cfg(not(windows))]
-        #[cfg(not(target_os = "illumos"))]
+        #[cfg(any(
+            (not(target_os = "illumos"),
+            (not(target_os = "windows")
+        ))]
         socket.set_reuse_port(true)?;
 
         socket.bind(&addr)?;
