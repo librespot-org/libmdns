@@ -1,6 +1,6 @@
 # libmdns - Rust mDNS responder
 
-libmdns is a pure rust implementation of the mDNS ([RFC 6762]) and DNS-SD ([RFC 6763]) protocols.
+libmdns is a pure rust implementation of the mDNS ([RFC 6762]) and DNS-SD ([RFC 6763]) protocols. This means that libmdns will respond to LAN DNS requests broadcasted on port 5353 with a broadcast of it's own, advertising the services you register.
 
 Built with the tokio async runtime, libmdns can run in a dedicated thread, or be spawned with an existing tokio Handle.
 
