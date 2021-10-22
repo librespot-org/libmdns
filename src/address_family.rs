@@ -1,4 +1,5 @@
 use super::MDNS_PORT;
+use if_addrs::get_if_addrs;
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket};
@@ -46,7 +47,23 @@ impl AddressFamily for Inet {
     const DOMAIN: Domain = Domain::IPV4;
 
     fn join_multicast(socket: &Socket, multiaddr: &Self::Addr) -> io::Result<()> {
-        socket.join_multicast_v4(multiaddr, &Ipv4Addr::UNSPECIFIED)
+        let interfaces = get_if_addrs()?;
+        if interfaces.is_empty() {
+            socket.join_multicast_v4(multiaddr, &Ipv4Addr::UNSPECIFIED)
+        } else {
+            for iface in interfaces {
+                if iface.is_loopback() {
+                    continue;
+                }
+                match (iface.ip(), Self::DOMAIN) {
+                    (IpAddr::V4(ip), Domain::IPV4) => {
+                        socket.join_multicast_v4(multiaddr, &ip)?;
+                    }
+                    _ => (),
+                }
+            }
+            Ok(())
+        }
     }
 }
 
@@ -59,6 +76,22 @@ impl AddressFamily for Inet6 {
     const DOMAIN: Domain = Domain::IPV6;
 
     fn join_multicast(socket: &Socket, multiaddr: &Self::Addr) -> io::Result<()> {
-        socket.join_multicast_v6(multiaddr, 0)
+        let interfaces = get_if_addrs()?;
+        if interfaces.is_empty() {
+            socket.join_multicast_v6(multiaddr, 0)
+        } else {
+            for iface in interfaces {
+                if iface.is_loopback() {
+                    continue;
+                }
+                match (iface.ip(), Self::DOMAIN) {
+                    (IpAddr::V6(_ip), Domain::IPV6) => {
+                        socket.join_multicast_v6(multiaddr, 0)?;
+                    }
+                    _ => (),
+                }
+            }
+            Ok(())
+        }
     }
 }
