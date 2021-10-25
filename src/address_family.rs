@@ -1,5 +1,6 @@
 use super::MDNS_PORT;
 use if_addrs::get_if_addrs;
+use nix::net::if_::if_nametoindex;
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket};
@@ -85,8 +86,9 @@ impl AddressFamily for Inet6 {
                     continue;
                 }
                 match (iface.ip(), Self::DOMAIN) {
-                    (IpAddr::V6(_ip), Domain::IPV6) => {
-                        socket.join_multicast_v6(multiaddr, 0)?;
+                    (IpAddr::V6(ip), Domain::IPV6) => {
+                        socket
+                            .join_multicast_v6(multiaddr, if_nametoindex(iface.name.as_str())?)?;
                     }
                     _ => (),
                 }
