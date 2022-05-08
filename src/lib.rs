@@ -40,11 +40,14 @@ pub struct Service {
 type ResponderTask = Box<dyn Future<Output = ()> + Send + Unpin>;
 
 impl Responder {
-    /// Spawn a responder task on an os thread.
+    /// Spawn a `Responder` task on an new os thread.
     pub fn new() -> io::Result<Responder> {
         Self::new_with_ip_list(Vec::new())
     }
-    pub fn new_with_ip_list(allowed_ip: Vec<IpAddr>) -> io::Result<Responder> {
+    /// Spawn a `Responder` task on an new os thread.
+    /// DNS response records will have the reported IPs limited to those passed in here.
+    /// This can be particularly useful on machines with lots of networks created by tools such as docker.
+    pub fn new_with_ip_list(allowed_ips: Vec<IpAddr>) -> io::Result<Responder> {
         let (tx, rx) = std::sync::mpsc::sync_channel(0);
         thread::Builder::new()
             .name("mdns-responder".to_owned())
@@ -54,7 +57,7 @@ impl Responder {
                     .build()
                     .unwrap();
                 rt.block_on(async {
-                    match Self::with_default_handle_and_ip_list(allowed_ip) {
+                    match Self::with_default_handle_and_ip_list(allowed_ips) {
                         Ok((responder, task)) => {
                             tx.send(Ok(responder)).expect("tx responder channel closed");
                             task.await;
@@ -83,8 +86,12 @@ impl Responder {
     pub fn spawn(handle: &Handle) -> io::Result<Responder> {
         Self::spawn_with_ip_list(handle, Vec::new())
     }
-    pub fn spawn_with_ip_list(handle: &Handle, allowed_ip: Vec<IpAddr>) -> io::Result<Responder> {
-        let (responder, task) = Self::with_default_handle_and_ip_list(allowed_ip)?;
+
+    /// Spawn a `Responder` task  with the provided tokio `Handle`.
+    /// DNS response records will have the reported IPs limited to those passed in here.
+    /// This can be particularly useful on machines with lots of networks created by tools such as docker.
+    pub fn spawn_with_ip_list(handle: &Handle, allowed_ips: Vec<IpAddr>) -> io::Result<Responder> {
+        let (responder, task) = Self::with_default_handle_and_ip_list(allowed_ips)?;
         handle.spawn(task);
         Ok(responder)
     }
@@ -93,8 +100,12 @@ impl Responder {
     pub fn with_default_handle() -> io::Result<(Responder, ResponderTask)> {
         Self::with_default_handle_and_ip_list(Vec::new())
     }
+
+    /// Spawn a `Responder` on the default tokio handle.
+    /// DNS response records will have the reported IPs limited to those passed in here.
+    /// This can be particularly useful on machines with lots of networks created by tools such as docker.
     pub fn with_default_handle_and_ip_list(
-        allowed_ip: Vec<IpAddr>,
+        allowed_ips: Vec<IpAddr>,
     ) -> io::Result<(Responder, ResponderTask)> {
         let mut hostname = hostname::get()?.into_string().map_err(|_| {
             io::Error::new(io::ErrorKind::InvalidData, "Hostname not valid unicode")
@@ -106,8 +117,8 @@ impl Responder {
 
         let services = Arc::new(RwLock::new(ServicesInner::new(hostname)));
 
-        let v4 = FSM::<Inet>::new(&services, allowed_ip.clone());
-        let v6 = FSM::<Inet6>::new(&services, allowed_ip);
+        let v4 = FSM::<Inet>::new(&services, allowed_ips.clone());
+        let v6 = FSM::<Inet6>::new(&services, allowed_ips);
 
         let (task, commands): (ResponderTask, _) = match (v4, v6) {
             (Ok((v4_task, v4_command)), Ok((v6_task, v6_command))) => {
