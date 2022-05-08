@@ -41,6 +41,14 @@ pub enum Type {
     SRV = 33,
     /// EDNS0 options (RFC 6891)
     OPT = 41,
+    /// Delegation signer (RFC 4034)
+    DS = 43,
+    /// DNSSEC signature (RFC 4034)
+    RRSIG = 46,
+    /// DNSEC options (RFC 4034)
+    NSEC = 47,
+    /// DNS Key record (RFC 4034)
+    DNSKEY = 48,
 }
 
 /// The QTYPE value according to RFC 1035
@@ -262,6 +270,10 @@ impl Type {
             28 => Ok(AAAA),
             33 => Ok(SRV),
             41 => Ok(OPT),
+            43 => Ok(DS),
+            46 => Ok(RRSIG),
+            47 => Ok(NSEC),
+            48 => Ok(DNSKEY),
             x => Err(Error::InvalidType(x)),
         }
     }
