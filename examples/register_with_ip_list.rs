@@ -4,9 +4,9 @@ pub fn main() {
     builder.init();
 
     // allow only these two IP address to be sent in A record
-    let vec: Vec<std::net::IpAddr> = vec![ 
-        "192.168.1.10".parse::<std::net::Ipv4Addr>().unwrap().into(), 
-        std::net::Ipv6Addr::new(0, 0, 0, 0xfe80, 0x1ff, 0xfe23, 0x4567, 0x890a).into() 
+    let vec: Vec<std::net::IpAddr> = vec![
+        "192.168.1.10".parse::<std::net::Ipv4Addr>().unwrap().into(),
+        std::net::Ipv6Addr::new(0, 0, 0, 0xfe80, 0x1ff, 0xfe23, 0x4567, 0x890a).into(),
     ];
 
     let responder = libmdns::Responder::new_with_ip_list(vec).unwrap();

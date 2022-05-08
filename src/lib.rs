@@ -4,8 +4,8 @@ use std::cell::RefCell;
 use std::future::Future;
 use std::io;
 use std::marker::Unpin;
-use std::sync::{Arc, RwLock};
 use std::net::IpAddr;
+use std::sync::{Arc, RwLock};
 
 use std::thread;
 use tokio::{runtime::Handle, sync::mpsc};
@@ -93,7 +93,9 @@ impl Responder {
     pub fn with_default_handle() -> io::Result<(Responder, ResponderTask)> {
         Self::with_default_handle_and_ip_list(Vec::new())
     }
-    pub fn with_default_handle_and_ip_list(allowed_ip: Vec<IpAddr>) -> io::Result<(Responder, ResponderTask)> {
+    pub fn with_default_handle_and_ip_list(
+        allowed_ip: Vec<IpAddr>,
+    ) -> io::Result<(Responder, ResponderTask)> {
         let mut hostname = hostname::get()?.into_string().map_err(|_| {
             io::Error::new(io::ErrorKind::InvalidData, "Hostname not valid unicode")
         })?;
