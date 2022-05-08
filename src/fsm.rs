@@ -37,11 +37,15 @@ pub struct FSM<AF: AddressFamily> {
     commands: mpsc::UnboundedReceiver<Command>,
     outgoing: VecDeque<(Vec<u8>, SocketAddr)>,
     _af: PhantomData<AF>,
+    allowed_ip: Vec<IpAddr>,
 }
 
 impl<AF: AddressFamily> FSM<AF> {
     // Will panic if called from outside the context of a runtime
-    pub fn new(services: &Services) -> io::Result<(FSM<AF>, mpsc::UnboundedSender<Command>)> {
+    pub fn new(
+        services: &Services,
+        allowed_ip: Vec<IpAddr>,
+    ) -> io::Result<(FSM<AF>, mpsc::UnboundedSender<Command>)> {
         let std_socket = AF::bind()?;
         let socket = UdpSocket::from_std(std_socket)?;
 
@@ -53,6 +57,7 @@ impl<AF: AddressFamily> FSM<AF> {
             commands: rx,
             outgoing: VecDeque::new(),
             _af: PhantomData,
+            allowed_ip: allowed_ip,
         };
 
         Ok((fsm, tx))
@@ -182,6 +187,11 @@ impl<AF: AddressFamily> FSM<AF> {
             }
 
             trace!("found interface {:?}", iface);
+            if !self.allowed_ip.is_empty() && !self.allowed_ip.contains(&iface.ip()) {
+                trace!("  -> interface dropped");
+                continue;
+            }
+
             match (iface.ip(), AF::DOMAIN) {
                 (IpAddr::V4(ip), Domain::IPV4) => {
                     builder = builder.add_answer(hostname, QueryClass::IN, ttl, &RRData::A(ip))
