@@ -121,6 +121,23 @@ mod test {
     }
 
     #[test]
+    fn parse_name_length_too_long_query() {
+        // If the name length provided in the query exceeds the available data we should error
+        // rather than panic.
+        //
+        // Here the entire data section contains only 17 bytes but the first name field length in
+        // the query section falsely indicates that the name field contains 17 bytes. If left
+        // unchecked this would cause:
+        // ```
+        // thread 'dns_parser::parser::test::parse_name_length_too_long_query' panicked at 'range
+        // end index 18 out of range for slice of length 17'
+        // ```
+        let query = b"\x06%\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00\
+                      \x11example\x03com\x00\x00\x01\x00\x01";
+        assert!(Packet::parse(query).is_err());
+    }
+
+    #[test]
     fn parse_example_response() {
         let response = b"\x06%\x81\x80\x00\x01\x00\x01\x00\x00\x00\x00\
                          \x07example\x03com\x00\x00\x01\x00\x01\
