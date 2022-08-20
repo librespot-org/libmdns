@@ -61,6 +61,9 @@ impl<'a> Name<'a> {
                 ));
             } else if byte & 0b1100_0000 == 0 {
                 let end = pos + byte as usize + 1;
+                if end >= data.len() {
+                    return Err(Error::UnexpectedEOF);
+                }
                 if from_utf8(&data[pos + 1..end]).is_err() {
                     return Err(Error::LabelIsNotAscii);
                 }
