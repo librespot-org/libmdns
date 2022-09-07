@@ -83,6 +83,15 @@ impl ServicesInner {
     }
 }
 
+impl<'a> IntoIterator for &'a ServicesInner {
+    type Item = &'a crate::ServiceData;
+    type IntoIter = std::collections::hash_map::Values<'a, usize, crate::ServiceData>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.by_id.values()
+    }
+}
+
 /// Returned by [`ServicesInner.find_by_type`](struct.ServicesInner.html#method.find_by_type)
 pub struct FindByType<'a> {
     services: &'a ServicesInner,

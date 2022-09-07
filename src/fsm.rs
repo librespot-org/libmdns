@@ -2,6 +2,7 @@ use crate::dns_parser::{self, Name, QueryClass, QueryType, RRData};
 use if_addrs::get_if_addrs;
 use log::{debug, error, trace, warn};
 use socket2::Domain;
+use std::borrow::Cow;
 use std::collections::VecDeque;
 use std::io;
 use std::io::ErrorKind::WouldBlock;
@@ -20,6 +21,9 @@ use crate::address_family::AddressFamily;
 use crate::services::{ServiceData, Services};
 
 pub type AnswerBuilder = dns_parser::Builder<dns_parser::Answers>;
+
+const SERVICE_TYPE_ENUMERATION_NAME: Cow<'static, str> =
+    Cow::Borrowed("_services._dns-sd._udp.local");
 
 #[derive(Clone, Debug)]
 pub enum Command {
@@ -134,6 +138,28 @@ impl<AF: AddressFamily> FSM<AF> {
         }
     }
 
+    /// https://www.rfc-editor.org/rfc/rfc6763#section-9
+    fn handle_service_type_enumeration<'a>(
+        question: &dns_parser::Question,
+        services: impl Iterator<Item = &'a ServiceData>,
+        mut builder: AnswerBuilder,
+    ) -> AnswerBuilder {
+        let service_type_enumeration_name = Name::FromStr(SERVICE_TYPE_ENUMERATION_NAME);
+        if question.qname == service_type_enumeration_name {
+            for svc in services {
+                let svc_type = ServiceData {
+                    name: svc.typ.clone(),
+                    typ: service_type_enumeration_name.clone(),
+                    port: svc.port,
+                    txt: vec![],
+                };
+                builder = svc_type.add_ptr_rr(builder, DEFAULT_TTL);
+            }
+        }
+
+        builder
+    }
+
     fn handle_question(
         &self,
         question: &dns_parser::Question,
@@ -148,6 +174,8 @@ impl<AF: AddressFamily> FSM<AF> {
                 builder = self.add_ip_rr(services.get_hostname(), builder, DEFAULT_TTL);
             }
             QueryType::PTR => {
+                builder =
+                    Self::handle_service_type_enumeration(question, services.into_iter(), builder);
                 for svc in services.find_by_type(&question.qname) {
                     builder = svc.add_ptr_rr(builder, DEFAULT_TTL);
                     builder = svc.add_srv_rr(services.get_hostname(), builder, DEFAULT_TTL);
@@ -267,5 +295,58 @@ impl<AF: Unpin + AddressFamily> Future for FSM<AF> {
         }
 
         Poll::Pending
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{address_family::Inet, services::ServicesInner};
+    use std::sync::{Arc, RwLock};
+
+    #[test]
+    fn test_service_type_enumeration() {
+        let question = dns_parser::Question {
+            qname: dns_parser::Name::from_str("_services._dns-sd._udp.local").unwrap(),
+            qtype: dns_parser::QueryType::PTR,
+            qclass: dns_parser::QueryClass::IN,
+            qu: false,
+        };
+        let services = Arc::new(RwLock::new(ServicesInner::new(
+            "test-hostname.local".into(),
+        )));
+        let service_data = ServiceData {
+            name: Name::from_str("test-instance").unwrap(),
+            typ: Name::from_str("_test-service-name._tcp").unwrap(),
+            port: 8008,
+            txt: vec![],
+        };
+        services.write().unwrap().register(service_data);
+
+        let mut answer_builder =
+            dns_parser::Builder::new_response(0, false, true).move_to::<dns_parser::Answers>();
+        answer_builder.set_max_size(None);
+
+        answer_builder = FSM::<Inet>::handle_service_type_enumeration(
+            &question,
+            services.read().unwrap().into_iter(),
+            answer_builder,
+        );
+
+        let packet = answer_builder.build().unwrap();
+
+        let parsed = dns_parser::Packet::parse(&packet).unwrap();
+        assert_eq!(parsed.answers.len(), 1);
+        assert_eq!(
+            parsed.answers[0].name,
+            Name::from_str(SERVICE_TYPE_ENUMERATION_NAME).unwrap()
+        );
+        assert_eq!(parsed.answers[0].cls, dns_parser::Class::IN);
+        assert_eq!(parsed.answers[0].ttl, 60);
+        let ptr = match &parsed.answers[0].data {
+            RRData::PTR(ptr) => ptr,
+            other => panic!("Unexpected answer RR data type: {:?}", other),
+        };
+        assert_eq!(*ptr, Name::from_str("_test-service-name._tcp").unwrap());
     }
 }
