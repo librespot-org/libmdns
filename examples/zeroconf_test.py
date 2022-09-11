@@ -33,15 +33,7 @@ try:
 finally:
     zeroconf.close()
 
-zeroconf = Zeroconf()
-listener = MyListener()
-browser = ServiceBrowser(zeroconf, "_services._dns-sd._udp.local.", listener)
-try:
-    t = 0
-    while t < 5 and not listener.has_found(TYPE):
-        sleep(1)
-        t += 1
-    assert listener.has_found(TYPE)
-    print('Service type enumeration: Success')
-finally:
-    zeroconf.close()
+
+r = ZeroconfServiceTypes.find(timeout=0.5)
+assert TYPE in r
+print('Service type enumeration: Success')
