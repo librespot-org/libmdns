@@ -102,8 +102,7 @@ fn get_address_list() -> io::Result<Vec<(String, IpAddr)>> {
 }
 
 #[cfg(windows)]
-mod win
-{
+mod win {
     use std::ffi::{CString, NulError};
 
     mod private {
