@@ -104,18 +104,10 @@ fn get_address_list() -> io::Result<Vec<(String, IpAddr)>> {
 #[cfg(windows)]
 mod win {
     use std::ffi::{CString, NulError};
-
-    mod private {
-        use std::ffi::{c_char, c_uint};
-
-        #[link(name = "Iphlpapi")]
-        extern "C" {
-            pub fn if_nametoindex(ifname: *const c_char) -> c_uint;
-        }
-    }
+    use winapi::shared::netioapi;
 
     pub fn if_nametoindex(ifname: &str) -> Result<u32, NulError> {
         let c_str = CString::new(ifname)?;
-        Ok(unsafe { private::if_nametoindex(c_str.as_ptr()) })
+        Ok(unsafe { netioapi::if_nametoindex(c_str.as_ptr()) })
     }
 }
