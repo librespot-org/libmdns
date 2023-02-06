@@ -168,10 +168,27 @@ impl<AF: AddressFamily> FSM<AF> {
         let services = self.services.read().unwrap();
 
         match question.qtype {
-            QueryType::A | QueryType::AAAA | QueryType::All
+            QueryType::A | QueryType::AAAA
                 if question.qname == *services.get_hostname() =>
             {
                 builder = self.add_ip_rr(services.get_hostname(), builder, DEFAULT_TTL);
+            },
+            QueryType::All => {
+                // A / AAAA
+                builder = self.add_ip_rr(services.get_hostname(), builder, DEFAULT_TTL);
+                // PTR 
+                builder = Self::handle_service_type_enumeration(question, services.into_iter(), builder);
+                for svc in services.find_by_type(&question.qname) {
+                    builder = svc.add_ptr_rr(builder, DEFAULT_TTL);
+                    builder = svc.add_srv_rr(services.get_hostname(), builder, DEFAULT_TTL);
+                    builder = svc.add_txt_rr(builder, DEFAULT_TTL);
+                    builder = self.add_ip_rr(services.get_hostname(), builder, DEFAULT_TTL);
+                }
+                // SRV
+                if let Some(svc) = services.find_by_name(&question.qname) {
+                    builder = svc.add_srv_rr(services.get_hostname(), builder, DEFAULT_TTL);
+                    builder = self.add_ip_rr(services.get_hostname(), builder, DEFAULT_TTL);
+                }
             }
             QueryType::PTR => {
                 builder =
