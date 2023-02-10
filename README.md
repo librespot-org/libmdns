@@ -34,4 +34,4 @@ This project originally started as a fork of [plietar/rust-mdns](https://github.
 
 Thankyou for considering contributing, any and all contributions are happily welcomed!
 
-On the whole this library works. There's no-one actively seeking to improve it for it's own sake, and issues may not be immediately fixed. However if you're willing to open to a Pull Request with any changes that improve this project for your own uses without sacrificing platform support, I'll do my best to review merge and release.
+On the whole this library works. There is no-one actively seeking to improve it for it's own sake, and issues may not be immediately fixed. However if you're willing to open a Pull Request with changes to improve this project for your own uses in a way that doesn't sacrifice existing platform and feature support, I'll do my best to review, merge and release.
