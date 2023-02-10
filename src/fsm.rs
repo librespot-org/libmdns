@@ -166,27 +166,46 @@ impl<AF: AddressFamily> FSM<AF> {
         mut builder: AnswerBuilder,
     ) -> AnswerBuilder {
         let services = self.services.read().unwrap();
+        let hostname = services.get_hostname();
 
         match question.qtype {
-            QueryType::A | QueryType::AAAA | QueryType::All
-                if question.qname == *services.get_hostname() =>
-            {
-                builder = self.add_ip_rr(services.get_hostname(), builder, DEFAULT_TTL);
+            QueryType::A | QueryType::AAAA if question.qname == *hostname => {
+                builder = self.add_ip_rr(hostname, builder, DEFAULT_TTL);
+            }
+            QueryType::All => {
+                // A / AAAA
+                if question.qname == *hostname {
+                    builder = self.add_ip_rr(hostname, builder, DEFAULT_TTL);
+                }
+                // PTR
+                builder =
+                    Self::handle_service_type_enumeration(question, services.into_iter(), builder);
+                for svc in services.find_by_type(&question.qname) {
+                    builder = svc.add_ptr_rr(builder, DEFAULT_TTL);
+                    builder = svc.add_srv_rr(hostname, builder, DEFAULT_TTL);
+                    builder = svc.add_txt_rr(builder, DEFAULT_TTL);
+                    builder = self.add_ip_rr(hostname, builder, DEFAULT_TTL);
+                }
+                // SRV
+                if let Some(svc) = services.find_by_name(&question.qname) {
+                    builder = svc.add_srv_rr(hostname, builder, DEFAULT_TTL);
+                    builder = self.add_ip_rr(hostname, builder, DEFAULT_TTL);
+                }
             }
             QueryType::PTR => {
                 builder =
                     Self::handle_service_type_enumeration(question, services.into_iter(), builder);
                 for svc in services.find_by_type(&question.qname) {
                     builder = svc.add_ptr_rr(builder, DEFAULT_TTL);
-                    builder = svc.add_srv_rr(services.get_hostname(), builder, DEFAULT_TTL);
+                    builder = svc.add_srv_rr(hostname, builder, DEFAULT_TTL);
                     builder = svc.add_txt_rr(builder, DEFAULT_TTL);
-                    builder = self.add_ip_rr(services.get_hostname(), builder, DEFAULT_TTL);
+                    builder = self.add_ip_rr(hostname, builder, DEFAULT_TTL);
                 }
             }
             QueryType::SRV => {
                 if let Some(svc) = services.find_by_name(&question.qname) {
-                    builder = svc.add_srv_rr(services.get_hostname(), builder, DEFAULT_TTL);
-                    builder = self.add_ip_rr(services.get_hostname(), builder, DEFAULT_TTL);
+                    builder = svc.add_srv_rr(hostname, builder, DEFAULT_TTL);
+                    builder = self.add_ip_rr(hostname, builder, DEFAULT_TTL);
                 }
             }
             QueryType::TXT => {
