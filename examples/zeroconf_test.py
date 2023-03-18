@@ -1,4 +1,4 @@
-from zeroconf import ServiceBrowser, Zeroconf, ZeroconfServiceTypes
+from zeroconf import ServiceBrowser, Zeroconf, IPVersion, ZeroconfServiceTypes
 from time import sleep
 
 
@@ -20,7 +20,7 @@ class MyListener:
         pass
 
 
-zeroconf = Zeroconf()
+zeroconf = Zeroconf(ip_version=IPVersion.V4Only)
 listener = MyListener()
 browser = ServiceBrowser(zeroconf, TYPE, listener)
 try:
@@ -29,7 +29,21 @@ try:
         sleep(1)
         t += 1
     assert listener.has_found(NAME)
-    print('Service query: Success')
+    print('Service query: Success (IPv4)')
+finally:
+    zeroconf.close()
+
+
+zeroconf = Zeroconf(ip_version=IPVersion.V6Only)
+listener = MyListener()
+browser = ServiceBrowser(zeroconf, TYPE, listener)
+try:
+    t = 0
+    while t < 5 and not listener.has_found(NAME):
+        sleep(1)
+        t += 1
+    assert listener.has_found(NAME)
+    print('Service query: Success (IPv6)')
 finally:
     zeroconf.close()
 
