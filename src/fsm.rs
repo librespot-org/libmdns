@@ -68,6 +68,7 @@ impl<AF: AddressFamily> FSM<AF> {
     }
 
     fn recv_packets(&mut self, cx: &mut Context) -> io::Result<()> {
+        // Buffer size discussed in: https://github.com/librespot-org/libmdns/pull/40
         let mut recv_buf = [0u8; 65536];
         let mut buf = tokio::io::ReadBuf::new(&mut recv_buf);
         loop {
