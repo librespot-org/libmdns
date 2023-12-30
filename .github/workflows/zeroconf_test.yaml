@@ -10,6 +10,11 @@ jobs:
     steps:
     - uses: actions/checkout@v1
 
+    - name: Install our MSRV
+      uses: dtolnay/rust-toolchain@stable
+      with:
+         toolchain: "1.70"
+
     - name: Compile example
       run: cargo build --example register
 

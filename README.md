@@ -20,7 +20,7 @@ See the [example](https://github.com/librespot-org/libmdns/blob/stable-0.7.x/exa
 
 ## Dependencies
 
-libmdns' oldest supported Rust toolchain is `1.46.0`, _however it may compile fine on older versions of rust._
+libmdns' oldest supported Rust toolchain is `1.70.0`, _however it may compile fine on older versions of rust._
 
 **We hold no strong garantees for sticking to a Minimum Supported Rust Version**. Please open an issue on GitHub if you need support for older compilers or different platforms.
 
