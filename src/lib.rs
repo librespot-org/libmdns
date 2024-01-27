@@ -221,20 +221,20 @@ impl Drop for Shutdown {
     }
 }
 
-#[derive(Clone)]
-struct CommandSender(Vec<mpsc::UnboundedSender<Command>>);
 impl CommandSender {
     fn send(&mut self, cmd: Command) {
         for tx in self.0.iter_mut() {
-            tx.send(cmd.clone()).expect("responder died");
+            if let Err(_) = tx.send(cmd.clone()) {
+                warn!("responder died");
+            }
         }
     }
 
     fn send_unsolicited(&mut self, svc: ServiceData, ttl: u32, include_ip: bool) {
         self.send(Command::SendUnsolicited {
-            svc: svc,
-            ttl: ttl,
-            include_ip: include_ip,
+            svc,
+            ttl,
+            include_ip,
         });
     }
 
