@@ -7,7 +7,7 @@ use std::collections::VecDeque;
 use std::io;
 use std::io::ErrorKind::WouldBlock;
 use std::marker::PhantomData;
-use std::net::{IpAddr, SocketAddr, Ipv4Addr, Ipv6Addr};
+use std::net::{IpAddr, SocketAddr};
 use std::{
     future::Future,
     pin::Pin,
@@ -19,8 +19,6 @@ use tokio::{net::UdpSocket, sync::mpsc};
 use super::{DEFAULT_TTL, MDNS_PORT};
 use crate::address_family::AddressFamily;
 use crate::services::{ServiceData, Services};
-
-use local_ip_address::{list_afinet_netifas};
 
 pub type AnswerBuilder = dns_parser::Builder<dns_parser::Answers>;
 
@@ -223,7 +221,7 @@ impl<AF: AddressFamily> FSM<AF> {
     }
 
     fn add_ip_rr(&self, hostname: &Name, mut builder: AnswerBuilder, ttl: u32) -> AnswerBuilder {
-        let interfaces = match list_afinet_netifas() {
+        let interfaces = match get_if_addrs() {
             Ok(interfaces) => interfaces,
             Err(err) => {
                 error!("could not get list of interfaces: {}", err);
@@ -232,25 +230,22 @@ impl<AF: AddressFamily> FSM<AF> {
         };
 
         for iface in interfaces {
+            if iface.is_loopback() {
+                continue;
+            }
 
             trace!("found interface {:?}", iface);
-            if !self.allowed_ip.is_empty() && !self.allowed_ip.contains(&iface.1) {
+            if !self.allowed_ip.is_empty() && !self.allowed_ip.contains(&iface.ip()) {
                 trace!("  -> interface dropped");
                 continue;
             }
 
-            match (iface.1, AF::DOMAIN) {
+            match (iface.ip(), AF::DOMAIN) {
                 (IpAddr::V4(ip), Domain::IPV4) => {
-                    if !is_loopback_ipv4(ip) {
-                        builder = builder.add_answer(hostname, QueryClass::IN, ttl, &RRData::A(ip));
-                        trace!("  -> adding IP address {:?}", iface.1);
-                    }
+                    builder = builder.add_answer(hostname, QueryClass::IN, ttl, &RRData::A(ip))
                 }
                 (IpAddr::V6(ip), Domain::IPV6) => {
-                    if !is_loopback_ipv6(ip) {
-                        builder = builder.add_answer(hostname, QueryClass::IN, ttl, &RRData::AAAA(ip));
-                        trace!("  -> adding IP address {:?}", iface.1);
-                    }
+                    builder = builder.add_answer(hostname, QueryClass::IN, ttl, &RRData::AAAA(ip))
                 }
                 _ => (),
             }
@@ -321,15 +316,6 @@ impl<AF: Unpin + AddressFamily> Future for FSM<AF> {
 
         Poll::Pending
     }
-}
-
-
-fn is_loopback_ipv6(ip: Ipv6Addr) -> bool {
-    ip.segments() == [0, 0, 0, 0, 0, 0, 0, 1]
-}
-
-fn is_loopback_ipv4(ip: Ipv4Addr) -> bool {
-    ip.octets()[0] == 127
 }
 
 #[cfg(test)]

@@ -11,7 +11,7 @@ edition = "2018"
 
 [dependencies]
 byteorder = "1.5"
-if-addrs = "0.12.0"
+if-addrs = { version = "0.12.0", features = ["link-local"] }
 hostname = "0.4.0"
 log = "0.4"
 multimap = "0.10.0"
@@ -20,7 +20,6 @@ futures-util = "0.3"
 thiserror = "1.0"
 tokio = { version = "1.0", features = ["sync", "net", "rt"] }
 socket2 = { version = "0.5", features = ["all"] }
-local-ip-address = "0.6.1"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["netioapi"] }

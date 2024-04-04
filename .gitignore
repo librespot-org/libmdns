@@ -3,3 +3,4 @@ Cargo.lock
 __pycache__
 *.pyc
 examples/register_all.rs
+examples/test_get_ip.rs

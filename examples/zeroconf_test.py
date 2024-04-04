@@ -1,4 +1,4 @@
-from zeroconf import ServiceBrowser, Zeroconf, IPVersion, ZeroconfServiceTypes
+from zeroconf import ServiceBrowser, ServiceListener, Zeroconf, IPVersion, ZeroconfServiceTypes
 from time import sleep
 
 
@@ -6,7 +6,7 @@ TYPE = "_http._tcp.local."
 NAME = "libmdns Web Server"
 
 
-class MyListener:
+class MyListener(ServiceListener):
     def __init__(self):
         self.found = []
 
