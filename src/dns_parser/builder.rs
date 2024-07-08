@@ -215,7 +215,7 @@ impl<T: MoveTo<Nameservers>> Builder<T> {
     }
 }
 
-impl Builder<Additional> {
+impl<T: MoveTo<Additional>> Builder<T> {
     #[allow(dead_code)]
     pub fn add_additional(
         self,
@@ -227,7 +227,7 @@ impl Builder<Additional> {
         let mut builder = self.move_to::<Additional>();
 
         builder.write_rr(name, cls, ttl, data);
-        Header::inc_nameservers(&mut builder.buf).expect("Too many additional answers");
+        Header::inc_additional(&mut builder.buf).expect("Too many additional answers");
 
         builder
     }
