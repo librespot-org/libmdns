@@ -90,8 +90,55 @@ impl Responder {
     /// Spawn a `Responder` task  with the provided tokio `Handle`.
     /// DNS response records will have the reported IPs limited to those passed in here.
     /// This can be particularly useful on machines with lots of networks created by tools such as docker.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use libmdns::Responder;
+    ///
+    /// # use std::io;
+    /// # fn main() -> io::Result<()> {
+    /// let rt = tokio::runtime::Builder::new_current_thread().build().unwrap();
+    /// let handle = rt.handle().clone();
+    /// let vec: Vec<std::net::IpAddr> = vec![
+    ///     "192.168.1.10".parse::<std::net::Ipv4Addr>().unwrap().into(),
+    ///     std::net::Ipv6Addr::new(0, 0, 0, 0xfe80, 0x1ff, 0xfe23, 0x4567, 0x890a).into(),
+    /// ];
+    /// let responder = Responder::spawn_with_ip_list(&handle, vec)?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn spawn_with_ip_list(handle: &Handle, allowed_ips: Vec<IpAddr>) -> io::Result<Responder> {
         let (responder, task) = Self::with_default_handle_and_ip_list(allowed_ips)?;
+        handle.spawn(task);
+        Ok(responder)
+    }
+
+    /// Spawn a `Responder` task  with the provided tokio `Handle`.
+    /// DNS response records will have the reported IPs limited to those passed in here.
+    /// This can be particularly useful on machines with lots of networks created by tools such as docker.
+    /// And SRV field will have specified hostname instead of system hostname.
+    /// This can be particularly useful if the platform has the fixed hostname and the application
+    /// should make hostname unique for its purpose.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use libmdns::Responder;
+    ///
+    /// # use std::io;
+    /// # fn main() -> io::Result<()> {
+    /// let rt = tokio::runtime::Builder::new_current_thread().build().unwrap();
+    /// let handle = rt.handle().clone();
+    /// let responder = Responder::spawn_with_ip_list_and_hostname(&handle, Vec::new(), "myUniqueName".to_owned())?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn spawn_with_ip_list_and_hostname(
+        handle: &Handle,
+        allowed_ips: Vec<IpAddr>,
+        hostname: String,
+    ) -> io::Result<Responder> {
+        let (responder, task) =
+            Self::with_default_handle_and_ip_list_and_hostname(allowed_ips, hostname)?;
         handle.spawn(task);
         Ok(responder)
     }
@@ -107,10 +154,29 @@ impl Responder {
     pub fn with_default_handle_and_ip_list(
         allowed_ips: Vec<IpAddr>,
     ) -> io::Result<(Responder, ResponderTask)> {
-        let mut hostname = hostname::get()?.into_string().map_err(|_| {
+        let hostname = hostname::get()?.into_string().map_err(|_| {
             io::Error::new(io::ErrorKind::InvalidData, "Hostname not valid unicode")
         })?;
+        Self::default_handle(allowed_ips, hostname)
+    }
 
+    /// Spawn a `Responder` on the default tokio handle.
+    /// DNS response records will have the reported IPs limited to those passed in here.
+    /// This can be particularly useful on machines with lots of networks created by tools such as docker.
+    /// And SRV field will have specified hostname instead of system hostname.
+    /// This can be particularly useful if the platform has the fixed hostname and the application
+    /// should make hostname unique for its purpose.
+    pub fn with_default_handle_and_ip_list_and_hostname(
+        allowed_ips: Vec<IpAddr>,
+        hostname: String,
+    ) -> io::Result<(Responder, ResponderTask)> {
+        Self::default_handle(allowed_ips, hostname)
+    }
+
+    fn default_handle(
+        allowed_ips: Vec<IpAddr>,
+        mut hostname: String,
+    ) -> io::Result<(Responder, ResponderTask)> {
         if !hostname.ends_with(".local") {
             hostname.push_str(".local");
         }
@@ -136,7 +202,7 @@ impl Responder {
 
         let commands = CommandSender(commands);
         let responder = Responder {
-            services: services,
+            services,
             commands: RefCell::new(commands.clone()),
             shutdown: Arc::new(Shutdown(commands)),
         };
