@@ -11,10 +11,10 @@ edition = "2018"
 
 [dependencies]
 byteorder = "1.5"
-if-addrs = "0.11.0"
-hostname = "0.3.1"
+if-addrs = { version = "0.12.0", features = ["link-local"] }
+hostname = "0.4.0"
 log = "0.4"
-multimap = "0.9"
+multimap = "0.10.0"
 rand = "0.8"
 futures-util = "0.3"
 thiserror = "1.0"
@@ -25,10 +25,10 @@ socket2 = { version = "0.5", features = ["all"] }
 winapi = { version = "0.3", features = ["netioapi"] }
 
 [target.'cfg(not(windows))'.dependencies]
-nix = { version = "0.27", features = ["net"] }
+nix = { version = "0.28", features = ["net"] }
 
 [dev-dependencies]
-env_logger = { version = "0.10", default-features = false, features = [
+env_logger = { version = "0.10.2", default-features = false, features = [
   "color",
   "humantime",
   "auto-color",
