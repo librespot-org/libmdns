@@ -4,6 +4,8 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 #[allow(dead_code)]
 pub enum Error {
+    #[error("invalid compression pointer")]
+    BadPointer,
     #[error("packet is smaller than header size")]
     HeaderTooShort,
     #[error("packet is has incomplete data")]

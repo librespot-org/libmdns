@@ -186,3 +186,31 @@ impl<'a> PartialEq for Name<'a> {
 }
 
 impl<'a> Eq for Name<'a> {}
+
+#[cfg(test)]
+mod test {
+    use super::Error;
+    use super::Name;
+
+    #[test]
+    fn parse_badpointer_same_offset() {
+        // A buffer where an offset points to itself,
+        // which is a bad compression pointer.
+        let same_offset = vec![192, 2, 192, 2];
+        let is_match = matches!(Name::scan(&same_offset, &same_offset),
+                                Err(Error::BadPointer));
+
+        assert!(is_match);
+    }
+
+    #[test]
+    fn parse_badpointer_forward_offset() {
+        // A buffer where the offsets points back to each other which causes
+        // infinite recursion if never checked, a bad compression pointer.
+        let forwards_offset = vec![192, 2, 192, 4, 192, 2];
+        let is_match = matches!(Name::scan(&forwards_offset, &forwards_offset),
+                                Err(Error::BadPointer));
+
+        assert!(is_match);
+    }
+}
