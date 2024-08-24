@@ -21,12 +21,6 @@ thiserror = "1.0"
 tokio = { version = "1.0", features = ["sync", "net", "rt"] }
 socket2 = { version = "0.5", features = ["all"] }
 
-[target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3", features = ["netioapi"] }
-
-[target.'cfg(not(windows))'.dependencies]
-nix = { version = "0.28", features = ["net"] }
-
 [dev-dependencies]
 env_logger = { version = "0.10.2", default-features = false, features = [
   "color",
