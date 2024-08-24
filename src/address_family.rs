@@ -127,4 +127,3 @@ fn get_one_nonloopback_ipv4_addr_per_iface() -> io::Result<Vec<Ipv4Addr>> {
         })
         .collect())
 }
-
