@@ -12,4 +12,5 @@ pub use self::header::Header;
 mod rrdata;
 pub use self::rrdata::RRData;
 mod builder;
+#[allow(unused_imports)]
 pub use self::builder::{Answers, Builder, Questions};
