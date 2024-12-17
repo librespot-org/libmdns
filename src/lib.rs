@@ -326,6 +326,43 @@ impl Responder {
             _shutdown: self.shutdown.clone(),
         }
     }
+
+    #[must_use]
+    pub fn register_with_ttl(&self, svc_type: String, svc_name: String, port: u16, txt: &[&str], ttl: u32) -> Service {
+        let txt = if txt.is_empty() {
+            vec![0]
+        } else {
+            txt.iter()
+                .flat_map(|entry| {
+                    let entry = entry.as_bytes();
+                    if entry.len() > 255 {
+                        panic!("{:?} is too long for a TXT record", entry);
+                    }
+                    std::iter::once(entry.len() as u8).chain(entry.iter().cloned())
+                })
+                .collect()
+        };
+
+        let svc = ServiceData {
+            typ: Name::from_str(format!("{}.local", svc_type)).unwrap(),
+            name: Name::from_str(format!("{}.{}.local", svc_name, svc_type)).unwrap(),
+            port: port,
+            txt: txt,
+        };
+
+        self.commands
+            .borrow_mut()
+            .send_unsolicited(svc.clone(), ttl, true);
+
+        let id = self.services.write().unwrap().register(svc);
+
+        Service {
+            id: id,
+            commands: self.commands.borrow().clone(),
+            services: self.services.clone(),
+            _shutdown: self.shutdown.clone(),
+        }
+    }
 }
 
 impl Default for Responder {
