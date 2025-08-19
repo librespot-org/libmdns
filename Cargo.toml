@@ -7,6 +7,7 @@ repository = "https://github.com/librespot-org/libmdns"
 readme = "README.md"
 license = "MIT"
 edition = "2018"
+rust-version = "1.74"
 
 [dependencies]
 byteorder = "1.5"
