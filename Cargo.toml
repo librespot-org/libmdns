@@ -2,12 +2,12 @@
 name = "libmdns"
 version = "0.9.1"
 authors = ["Will Stott <willstott101+libmdns@gmail.com>"]
-
 description = "mDNS Responder library for building discoverable LAN services in Rust"
 repository = "https://github.com/librespot-org/libmdns"
 readme = "README.md"
 license = "MIT"
 edition = "2018"
+rust-version = "1.74"
 
 [dependencies]
 byteorder = "1.5"
@@ -23,7 +23,7 @@ socket2 = { version = "0.5", features = ["all"] }
 
 [dev-dependencies]
 env_logger = { version = "0.10.2", default-features = false, features = [
-  "color",
-  "humantime",
-  "auto-color",
+    "color",
+    "humantime",
+    "auto-color",
 ] }
