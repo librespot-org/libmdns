@@ -1,3 +1,11 @@
+#![deny(clippy::all)]
+#![forbid(unsafe_code)]
+#![warn(clippy::pedantic)]
+#![warn(rust_2018_idioms)]
+#![warn(rust_2021_compatibility)]
+#![warn(rust_2024_compatibility)]
+#![warn(future_incompatible)]
+
 use futures_util::{future, future::FutureExt};
 use log::warn;
 use std::cell::RefCell;
@@ -41,12 +49,26 @@ type ResponderTask = Box<dyn Future<Output = ()> + Send + Unpin>;
 
 impl Responder {
     /// Spawn a `Responder` task on an new os thread.
-    pub fn new() -> io::Result<Responder> {
-        Self::new_with_ip_list(Vec::new())
+    ///
+    /// # Panics
+    ///
+    /// If the tokio runtime cannot be created this will panic.
+    #[must_use]
+    pub fn new() -> Responder {
+        Self::new_with_ip_list(Vec::new()).unwrap()
     }
     /// Spawn a `Responder` task on an new os thread.
     /// DNS response records will have the reported IPs limited to those passed in here.
-    /// This can be particularly useful on machines with lots of networks created by tools such as docker.
+    /// This can be particularly useful on machines with lots of networks created by tools such as
+    /// Docker.
+    ///
+    /// # Errors
+    ///
+    /// If the hostname cannot be converted to a valid unicode string, this will return an error.
+    ///
+    /// # Panics
+    ///
+    /// If the tokio runtime cannot be created this will panic.
     pub fn new_with_ip_list(allowed_ips: Vec<IpAddr>) -> io::Result<Responder> {
         let (tx, rx) = std::sync::mpsc::sync_channel(0);
         thread::Builder::new()
@@ -64,7 +86,7 @@ impl Responder {
                         }
                         Err(e) => tx.send(Err(e)).expect("tx responder channel closed"),
                     }
-                })
+                });
             })?;
         rx.recv().expect("rx responder channel closed")
     }
@@ -83,6 +105,10 @@ impl Responder {
     /// # Ok(())
     /// # }
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// If the hostname cannot be converted to a valid unicode string, this will return an error.
     pub fn spawn(handle: &Handle) -> io::Result<Responder> {
         Self::spawn_with_ip_list(handle, Vec::new())
     }
@@ -107,6 +133,10 @@ impl Responder {
     /// # Ok(())
     /// # }
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// If the hostname cannot be converted to a valid unicode string, this will return an error.
     pub fn spawn_with_ip_list(handle: &Handle, allowed_ips: Vec<IpAddr>) -> io::Result<Responder> {
         let (responder, task) = Self::with_default_handle_and_ip_list(allowed_ips)?;
         handle.spawn(task);
@@ -115,7 +145,8 @@ impl Responder {
 
     /// Spawn a `Responder` task  with the provided tokio `Handle`.
     /// DNS response records will have the reported IPs limited to those passed in here.
-    /// This can be particularly useful on machines with lots of networks created by tools such as docker.
+    /// This can be particularly useful on machines with lots of networks created by tools such as
+    /// Docker.
     /// And SRV field will have specified hostname instead of system hostname.
     /// This can be particularly useful if the platform has the fixed hostname and the application
     /// should make hostname unique for its purpose.
@@ -132,6 +163,10 @@ impl Responder {
     /// # Ok(())
     /// # }
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// If the hostname cannot be converted to a valid unicode string, this will return an error.
     pub fn spawn_with_ip_list_and_hostname(
         handle: &Handle,
         allowed_ips: Vec<IpAddr>,
@@ -144,13 +179,22 @@ impl Responder {
     }
 
     /// Spawn a `Responder` on the default tokio handle.
+    ///
+    /// # Errors
+    ///
+    /// If the hostname cannot be converted to a valid unicode string, this will return an error.
     pub fn with_default_handle() -> io::Result<(Responder, ResponderTask)> {
         Self::with_default_handle_and_ip_list(Vec::new())
     }
 
     /// Spawn a `Responder` on the default tokio handle.
     /// DNS response records will have the reported IPs limited to those passed in here.
-    /// This can be particularly useful on machines with lots of networks created by tools such as docker.
+    /// This can be particularly useful on machines with lots of networks created by tools such as
+    /// Docker.
+    ///
+    /// # Errors
+    ///
+    /// If the hostname cannot be converted to a valid unicode string, this will return an error.
     pub fn with_default_handle_and_ip_list(
         allowed_ips: Vec<IpAddr>,
     ) -> io::Result<(Responder, ResponderTask)> {
@@ -162,10 +206,15 @@ impl Responder {
 
     /// Spawn a `Responder` on the default tokio handle.
     /// DNS response records will have the reported IPs limited to those passed in here.
-    /// This can be particularly useful on machines with lots of networks created by tools such as docker.
+    /// This can be particularly useful on machines with lots of networks created by tools such as
+    /// Docker.
     /// And SRV field will have specified hostname instead of system hostname.
     /// This can be particularly useful if the platform has the fixed hostname and the application
     /// should make hostname unique for its purpose.
+    ///
+    /// # Errors
+    ///
+    /// If the hostname cannot be converted to a valid unicode string, this will return an error.
     pub fn with_default_handle_and_ip_list_and_hostname(
         allowed_ips: Vec<IpAddr>,
         hostname: String,
@@ -177,6 +226,7 @@ impl Responder {
         allowed_ips: Vec<IpAddr>,
         mut hostname: String,
     ) -> io::Result<(Responder, ResponderTask)> {
+        #[allow(clippy::case_sensitive_file_extension_comparisons)]
         if !hostname.ends_with(".local") {
             hostname.push_str(".local");
         }
@@ -193,7 +243,7 @@ impl Responder {
             }
 
             (Ok((v4_task, v4_command)), Err(err)) => {
-                warn!("Failed to register IPv6 receiver: {:?}", err);
+                warn!("Failed to register IPv6 receiver: {err:?}");
                 (Box::new(v4_task), vec![v4_command])
             }
 
@@ -215,14 +265,14 @@ impl Responder {
     /// Register a service to be advertised by the `Responder`. The service is unregistered on
     /// drop.
     ///
-    /// # example
+    /// # Example
     ///
     /// ```no_run
     /// use libmdns::Responder;
     ///
     /// # use std::io;
     /// # fn main() -> io::Result<()> {
-    /// let responder = Responder::new()?;
+    /// let responder = Responder::new();
     /// // bind service
     /// let _http_svc = responder.register(
     ///          "_http._tcp".into(),
@@ -233,27 +283,34 @@ impl Responder {
     /// # Ok(())
     /// # }
     /// ```
+    ///
+    /// # Panics
+    ///
+    /// If the TXT records are longer than 255 bytes, this will panic.
     #[must_use]
-    pub fn register(&self, svc_type: String, svc_name: String, port: u16, txt: &[&str]) -> Service {
+    pub fn register(&self, svc_type: &str, svc_name: &str, port: u16, txt: &[&str]) -> Service {
         let txt = if txt.is_empty() {
             vec![0]
         } else {
             txt.iter()
                 .flat_map(|entry| {
                     let entry = entry.as_bytes();
-                    if entry.len() > 255 {
-                        panic!("{:?} is too long for a TXT record", entry);
-                    }
-                    std::iter::once(entry.len() as u8).chain(entry.iter().cloned())
+                    assert!(
+                        (entry.len() <= 255),
+                        "{:?} is too long for a TXT record",
+                        entry
+                    );
+                    #[allow(clippy::cast_possible_truncation)]
+                    std::iter::once(entry.len() as u8).chain(entry.iter().copied())
                 })
                 .collect()
         };
 
         let svc = ServiceData {
-            typ: Name::from_str(format!("{}.local", svc_type)).unwrap(),
-            name: Name::from_str(format!("{}.{}.local", svc_name, svc_type)).unwrap(),
-            port: port,
-            txt: txt,
+            typ: Name::from_str(format!("{svc_type}.local")),
+            name: Name::from_str(format!("{svc_name}.{svc_type}.local")),
+            port,
+            txt,
         };
 
         self.commands
@@ -263,11 +320,17 @@ impl Responder {
         let id = self.services.write().unwrap().register(svc);
 
         Service {
-            id: id,
+            id,
             commands: self.commands.borrow().clone(),
             services: self.services.clone(),
             _shutdown: self.shutdown.clone(),
         }
+    }
+}
+
+impl Default for Responder {
+    fn default() -> Self {
+        Responder::new()
     }
 }
 
@@ -290,17 +353,18 @@ impl Drop for Shutdown {
 #[derive(Clone)]
 struct CommandSender(Vec<mpsc::UnboundedSender<Command>>);
 impl CommandSender {
+    #[allow(clippy::needless_pass_by_value)]
     fn send(&mut self, cmd: Command) {
-        for tx in self.0.iter_mut() {
+        for tx in &mut self.0 {
             tx.send(cmd.clone()).expect("responder died");
         }
     }
 
     fn send_unsolicited(&mut self, svc: ServiceData, ttl: u32, include_ip: bool) {
         self.send(Command::SendUnsolicited {
-            svc: svc,
-            ttl: ttl,
-            include_ip: include_ip,
+            svc,
+            ttl,
+            include_ip,
         });
     }
 

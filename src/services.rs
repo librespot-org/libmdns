@@ -23,7 +23,7 @@ pub struct ServicesInner {
 impl ServicesInner {
     pub fn new(hostname: String) -> Self {
         ServicesInner {
-            hostname: Name::from_str(hostname).unwrap(),
+            hostname: Name::from_str(hostname),
             by_id: HashMap::new(),
             by_type: MultiMap::new(),
             by_name: HashMap::new(),
@@ -34,7 +34,7 @@ impl ServicesInner {
         &self.hostname
     }
 
-    pub fn find_by_name<'a>(&'a self, name: &'a Name<'a>) -> Option<&ServiceData> {
+    pub fn find_by_name<'a>(&'a self, name: &'a Name<'a>) -> Option<&'a ServiceData> {
         self.by_name.get(name).and_then(|id| self.by_id.get(id))
     }
 
@@ -43,7 +43,7 @@ impl ServicesInner {
 
         FindByType {
             services: self,
-            ids: ids,
+            ids,
         }
     }
 
@@ -74,7 +74,7 @@ impl ServicesInner {
                 assert_eq!(*entry.get(), id);
                 entry.remove();
             }
-            _ => {
+            Entry::Vacant(_) => {
                 panic!("unknown/wrong service for id {}", id);
             }
         }
@@ -128,7 +128,12 @@ impl ServiceData {
         )
     }
 
-    pub fn add_srv_rr(&self, hostname: &Name, builder: AnswerBuilder, ttl: u32) -> AnswerBuilder {
+    pub fn add_srv_rr(
+        &self,
+        hostname: &Name<'_>,
+        builder: AnswerBuilder,
+        ttl: u32,
+    ) -> AnswerBuilder {
         builder.add_answer(
             &self.name,
             QueryClass::IN,

@@ -12,4 +12,4 @@ pub use self::header::Header;
 mod rrdata;
 pub use self::rrdata::RRData;
 mod builder;
-pub use self::builder::{Answers, Builder, Questions};
+pub use self::builder::{Answers, Builder};
