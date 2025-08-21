@@ -1,6 +1,6 @@
 use crate::dns_parser::{self, Name, QueryClass, RRData};
 use multimap::MultiMap;
-use rand::{thread_rng, Rng};
+use rand::{rng, Rng};
 use std::collections::HashMap;
 use std::slice;
 use std::sync::{Arc, RwLock};
@@ -48,9 +48,10 @@ impl ServicesInner {
     }
 
     pub fn register(&mut self, svc: ServiceData) -> usize {
-        let mut id = thread_rng().gen::<usize>();
+        let random_usize = || rng().random_range(..=usize::MAX);
+        let mut id = random_usize();
         while self.by_id.contains_key(&id) {
-            id = thread_rng().gen::<usize>();
+            id = random_usize();
         }
 
         self.by_type.insert(svc.typ.clone(), id);
