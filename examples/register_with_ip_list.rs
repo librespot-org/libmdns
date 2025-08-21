@@ -10,12 +10,7 @@ pub fn main() {
     ];
 
     let responder = libmdns::Responder::new_with_ip_list(vec).unwrap();
-    let _svc = responder.register(
-        "_http._tcp".to_owned(),
-        "libmdns Web Server".to_owned(),
-        80,
-        &["path=/"],
-    );
+    let _svc = responder.register("_http._tcp", "libmdns Web Server", 80, &["path=/"]);
 
     loop {
         ::std::thread::sleep(::std::time::Duration::from_secs(10));

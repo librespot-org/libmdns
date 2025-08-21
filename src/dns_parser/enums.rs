@@ -4,6 +4,7 @@ use super::Error;
 ///
 /// All "EXPERIMENTAL" markers here are from the RFC
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
+#[allow(clippy::upper_case_acronyms)]
 pub enum Type {
     /// a host addresss
     A = 1,
@@ -55,6 +56,7 @@ pub enum Type {
 ///
 /// All "EXPERIMENTAL" markers here are from the RFC
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
+#[allow(clippy::upper_case_acronyms)]
 pub enum QueryType {
     /// a host addresss
     A = 1,
@@ -153,7 +155,7 @@ pub enum ResponseCode {
 
 impl From<u16> for Opcode {
     fn from(code: u16) -> Opcode {
-        use self::Opcode::*;
+        use self::Opcode::{InverseQuery, Reserved, ServerStatusRequest, StandardQuery};
         match code {
             0 => StandardQuery,
             1 => InverseQuery,
@@ -162,10 +164,10 @@ impl From<u16> for Opcode {
         }
     }
 }
-impl Into<u16> for Opcode {
-    fn into(self) -> u16 {
-        use self::Opcode::*;
-        match self {
+impl From<Opcode> for u16 {
+    fn from(val: Opcode) -> Self {
+        use self::Opcode::{InverseQuery, Reserved, ServerStatusRequest, StandardQuery};
+        match val {
             StandardQuery => 0,
             InverseQuery => 1,
             ServerStatusRequest => 2,
@@ -176,7 +178,9 @@ impl Into<u16> for Opcode {
 
 impl From<u8> for ResponseCode {
     fn from(code: u8) -> ResponseCode {
-        use self::ResponseCode::*;
+        use self::ResponseCode::{
+            FormatError, NameError, NoError, NotImplemented, Refused, Reserved, ServerFailure,
+        };
         match code {
             0 => NoError,
             1 => FormatError,
@@ -189,10 +193,12 @@ impl From<u8> for ResponseCode {
         }
     }
 }
-impl Into<u8> for ResponseCode {
-    fn into(self) -> u8 {
-        use self::ResponseCode::*;
-        match self {
+impl From<ResponseCode> for u8 {
+    fn from(val: ResponseCode) -> Self {
+        use self::ResponseCode::{
+            FormatError, NameError, NoError, NotImplemented, Refused, Reserved, ServerFailure,
+        };
+        match val {
             NoError => 0,
             FormatError => 1,
             ServerFailure => 2,
@@ -206,7 +212,10 @@ impl Into<u8> for ResponseCode {
 
 impl QueryType {
     pub fn parse(code: u16) -> Result<QueryType, Error> {
-        use self::QueryType::*;
+        use self::QueryType::{
+            All, A, AAAA, AXFR, CNAME, HINFO, MAILA, MAILB, MB, MF, MG, MINFO, MR, MX, NS, NULL,
+            PTR, SOA, SRV, TXT, WKS,
+        };
         match code {
             1 => Ok(A),
             2 => Ok(NS),
@@ -236,7 +245,7 @@ impl QueryType {
 
 impl QueryClass {
     pub fn parse(code: u16) -> Result<QueryClass, Error> {
-        use self::QueryClass::*;
+        use self::QueryClass::{Any, CH, CS, HS, IN};
         match code {
             1 => Ok(IN),
             2 => Ok(CS),
@@ -250,7 +259,10 @@ impl QueryClass {
 
 impl Type {
     pub fn parse(code: u16) -> Result<Type, Error> {
-        use self::Type::*;
+        use self::Type::{
+            A, AAAA, CNAME, DNSKEY, DS, HINFO, MB, MF, MG, MINFO, MR, MX, NS, NSEC, NULL, OPT, PTR,
+            RRSIG, SOA, SRV, TXT, WKS,
+        };
         match code {
             1 => Ok(A),
             2 => Ok(NS),
@@ -281,7 +293,7 @@ impl Type {
 
 impl Class {
     pub fn parse(code: u16) -> Result<Class, Error> {
-        use self::Class::*;
+        use self::Class::{CH, CS, HS, IN};
         match code {
             1 => Ok(IN),
             2 => Ok(CS),

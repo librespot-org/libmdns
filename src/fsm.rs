@@ -35,6 +35,7 @@ pub enum Command {
     Shutdown,
 }
 
+#[allow(clippy::upper_case_acronyms)]
 pub struct FSM<AF: AddressFamily> {
     socket: UdpSocket,
     services: Services,
@@ -56,20 +57,20 @@ impl<AF: AddressFamily> FSM<AF> {
         let (tx, rx) = mpsc::unbounded_channel();
 
         let fsm = FSM {
-            socket: socket,
+            socket,
             services: services.clone(),
             commands: rx,
             outgoing: VecDeque::new(),
             _af: PhantomData,
-            allowed_ip: allowed_ip,
+            allowed_ip,
         };
 
         Ok((fsm, tx))
     }
 
-    fn recv_packets(&mut self, cx: &mut Context) -> io::Result<()> {
+    fn recv_packets(&mut self, cx: &mut Context<'_>) -> io::Result<()> {
         // Buffer size discussed in: https://github.com/librespot-org/libmdns/pull/40
-        let mut recv_buf = [0u8; 65536];
+        let mut recv_buf = vec![0u8; 65536].into_boxed_slice();
         let mut buf = tokio::io::ReadBuf::new(&mut recv_buf);
         loop {
             let addr = match self.socket.poll_recv_from(cx, &mut buf) {
@@ -84,23 +85,23 @@ impl<AF: AddressFamily> FSM<AF> {
     }
 
     fn handle_packet(&mut self, buffer: &[u8], addr: SocketAddr) {
-        trace!("received packet from {:?}", addr);
+        trace!("received packet from {addr:?}");
 
         let packet = match dns_parser::Packet::parse(buffer) {
             Ok(packet) => packet,
             Err(error) => {
-                warn!("couldn't parse packet from {:?}: {}", addr, error);
+                warn!("couldn't parse packet from {addr:?}: {error}");
                 return;
             }
         };
 
         if !packet.header.query {
-            trace!("received packet from {:?} with no query", addr);
+            trace!("received packet from {addr:?} with no query");
             return;
         }
 
         if packet.header.truncated {
-            warn!("dropping truncated packet from {:?}", addr);
+            warn!("dropping truncated packet from {addr:?}");
             return;
         }
 
@@ -139,9 +140,9 @@ impl<AF: AddressFamily> FSM<AF> {
         }
     }
 
-    /// https://www.rfc-editor.org/rfc/rfc6763#section-9
+    /// <https://www.rfc-editor.org/rfc/rfc6763#section-9>
     fn handle_service_type_enumeration<'a>(
-        question: &dns_parser::Question,
+        question: &dns_parser::Question<'_>,
         services: impl Iterator<Item = &'a ServiceData>,
         mut builder: AnswerBuilder,
     ) -> AnswerBuilder {
@@ -163,7 +164,7 @@ impl<AF: AddressFamily> FSM<AF> {
 
     fn handle_question(
         &self,
-        question: &dns_parser::Question,
+        question: &dns_parser::Question<'_>,
         mut builder: AnswerBuilder,
     ) -> AnswerBuilder {
         let services = self.services.read().unwrap();
@@ -220,11 +221,16 @@ impl<AF: AddressFamily> FSM<AF> {
         builder
     }
 
-    fn add_ip_rr(&self, hostname: &Name, mut builder: AnswerBuilder, ttl: u32) -> AnswerBuilder {
+    fn add_ip_rr(
+        &self,
+        hostname: &Name<'_>,
+        mut builder: AnswerBuilder,
+        ttl: u32,
+    ) -> AnswerBuilder {
         let interfaces = match get_if_addrs() {
             Ok(interfaces) => interfaces,
             Err(err) => {
-                error!("could not get list of interfaces: {}", err);
+                error!("could not get list of interfaces: {err}");
                 return builder;
             }
         };
@@ -234,7 +240,7 @@ impl<AF: AddressFamily> FSM<AF> {
                 continue;
             }
 
-            trace!("found interface {:?}", iface);
+            trace!("found interface {iface:?}");
             if !self.allowed_ip.is_empty() && !self.allowed_ip.contains(&iface.ip()) {
                 trace!("  -> interface dropped");
                 continue;
@@ -242,10 +248,10 @@ impl<AF: AddressFamily> FSM<AF> {
 
             match (iface.ip(), AF::DOMAIN) {
                 (IpAddr::V4(ip), Domain::IPV4) => {
-                    builder = builder.add_answer(hostname, QueryClass::IN, ttl, &RRData::A(ip))
+                    builder = builder.add_answer(hostname, QueryClass::IN, ttl, &RRData::A(ip));
                 }
                 (IpAddr::V6(ip), Domain::IPV6) => {
-                    builder = builder.add_answer(hostname, QueryClass::IN, ttl, &RRData::AAAA(ip))
+                    builder = builder.add_answer(hostname, QueryClass::IN, ttl, &RRData::AAAA(ip));
                 }
                 _ => (),
             }
@@ -278,7 +284,7 @@ impl<AF: AddressFamily> FSM<AF> {
 
 impl<AF: Unpin + AddressFamily> Future for FSM<AF> {
     type Output = ();
-    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<()> {
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
         let pinned = Pin::get_mut(self);
         while let Poll::Ready(cmd) = Pin::new(&mut pinned.commands).poll_recv(cx) {
             match cmd {
@@ -298,18 +304,18 @@ impl<AF: Unpin + AddressFamily> Future for FSM<AF> {
         }
 
         match pinned.recv_packets(cx) {
-            Ok(_) => (),
-            Err(e) => error!("ResponderRecvPacket Error: {:?}", e),
+            Ok(()) => (),
+            Err(e) => error!("ResponderRecvPacket Error: {e:?}"),
         }
 
         while let Some((ref response, addr)) = pinned.outgoing.pop_front() {
-            trace!("sending packet to {:?}", addr);
+            trace!("sending packet to {addr:?}");
 
             match pinned.socket.poll_send_to(cx, response, addr) {
                 Poll::Ready(Ok(bytes_sent)) if bytes_sent == response.len() => (),
                 Poll::Ready(Ok(_)) => warn!("failed to send entire packet"),
                 Poll::Ready(Err(ref ioerr)) if ioerr.kind() == WouldBlock => (),
-                Poll::Ready(Err(err)) => warn!("error sending packet {:?}", err),
+                Poll::Ready(Err(err)) => warn!("error sending packet {err:?}"),
                 Poll::Pending => (),
             }
         }
@@ -327,7 +333,7 @@ mod tests {
     #[test]
     fn test_service_type_enumeration() {
         let question = dns_parser::Question {
-            qname: dns_parser::Name::from_str("_services._dns-sd._udp.local").unwrap(),
+            qname: dns_parser::Name::from_str("_services._dns-sd._udp.local"),
             qtype: dns_parser::QueryType::PTR,
             qclass: dns_parser::QueryClass::IN,
             qu: false,
@@ -336,8 +342,8 @@ mod tests {
             "test-hostname.local".into(),
         )));
         let service_data = ServiceData {
-            name: Name::from_str("test-instance").unwrap(),
-            typ: Name::from_str("_test-service-name._tcp").unwrap(),
+            name: Name::from_str("test-instance"),
+            typ: Name::from_str("_test-service-name._tcp"),
             port: 8008,
             txt: vec![],
         };
@@ -359,7 +365,7 @@ mod tests {
         assert_eq!(parsed.answers.len(), 1);
         assert_eq!(
             parsed.answers[0].name,
-            Name::from_str(SERVICE_TYPE_ENUMERATION_NAME).unwrap()
+            Name::from_str(SERVICE_TYPE_ENUMERATION_NAME),
         );
         assert_eq!(parsed.answers[0].cls, dns_parser::Class::IN);
         assert_eq!(parsed.answers[0].ttl, 60);
@@ -367,6 +373,6 @@ mod tests {
             RRData::PTR(ptr) => ptr,
             other => panic!("Unexpected answer RR data type: {:?}", other),
         };
-        assert_eq!(*ptr, Name::from_str("_test-service-name._tcp").unwrap());
+        assert_eq!(*ptr, Name::from_str("_test-service-name._tcp"));
     }
 }

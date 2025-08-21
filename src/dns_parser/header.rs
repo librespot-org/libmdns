@@ -15,6 +15,7 @@ mod flag {
 
 /// Represents parsed header of the packet
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct Header {
     pub id: u16,
     pub query: bool,
@@ -61,12 +62,10 @@ impl Header {
     ///
     /// When buffer size is not exactly 12 bytes
     pub fn write(&self, data: &mut [u8]) {
-        if data.len() != 12 {
-            panic!("Header size is exactly 12 bytes");
-        }
+        assert_eq!(data.len(), 12, "Header size is exactly 12 bytes");
         let mut flags = 0u16;
-        flags |= Into::<u16>::into(self.opcode) << flag::OPCODE_MASK.trailing_zeros();
-        flags |= Into::<u8>::into(self.response_code) as u16;
+        flags |= u16::from(self.opcode) << flag::OPCODE_MASK.trailing_zeros();
+        flags |= u16::from(u8::from(self.response_code));
         if !self.query {
             flags |= flag::QUERY;
         }
