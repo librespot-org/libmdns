@@ -7,6 +7,7 @@ use super::{Error, Name, Type};
 
 /// The enumeration that represents known types of DNS resource records data
 #[derive(Debug, Clone)]
+#[allow(clippy::upper_case_acronyms)]
 pub enum RRData<'a> {
     CNAME(Name<'a>),
     NS(Name<'a>),
@@ -55,7 +56,7 @@ impl<'a> RRData<'a> {
             RRData::A(ip) => writer.write_u32::<BigEndian>(ip.into()),
 
             RRData::AAAA(ip) => {
-                for segment in ip.segments().iter() {
+                for segment in &ip.segments() {
                     writer.write_u16::<BigEndian>(*segment)?;
                 }
                 Ok(())
@@ -78,8 +79,7 @@ impl<'a> RRData<'a> {
                 writer.write_u16::<BigEndian>(preference)?;
                 exchange.write_to(writer)
             }
-            RRData::TXT(data) => writer.write_all(data),
-            RRData::Unknown { data, .. } => writer.write_all(data),
+            RRData::TXT(data) | RRData::Unknown { data, .. } => writer.write_all(data),
         }
     }
 
@@ -130,10 +130,7 @@ impl<'a> RRData<'a> {
                 })
             }
             Type::TXT => Ok(RRData::TXT(rdata)),
-            typ => Ok(RRData::Unknown {
-                typ: typ,
-                data: rdata,
-            }),
+            typ => Ok(RRData::Unknown { typ, data: rdata }),
         }
     }
 }

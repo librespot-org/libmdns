@@ -14,4 +14,6 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Check formatting
-      run: cargo fmt -- --check
+      run: cargo +stable fmt -- --check
+    - name: Check linting
+      run: cargo +stable clippy -- -Dwarnings

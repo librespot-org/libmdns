@@ -34,10 +34,11 @@ impl<'a> Name<'a> {
             }
             let byte = data[pos];
             if byte == 0 {
+                #[allow(clippy::range_plus_one)]
                 return Ok((
-                    Name::FromPacket {
+                    Self::FromPacket {
                         labels: &data[..pos + 1],
-                        original: original,
+                        original,
                     },
                     pos + 1,
                 ));
@@ -51,11 +52,11 @@ impl<'a> Name<'a> {
                     return Err(Error::UnexpectedEOF);
                 }
                 // Validate referred to location
-                Name::scan(&original[off..], original)?;
+                Self::scan(&original[off..], original)?;
                 return Ok((
-                    Name::FromPacket {
+                    Self::FromPacket {
                         labels: &data[..pos + 2],
-                        original: original,
+                        original,
                     },
                     pos + 2,
                 ));
@@ -71,20 +72,19 @@ impl<'a> Name<'a> {
                 if data.len() <= pos {
                     return Err(Error::UnexpectedEOF);
                 }
-                continue;
             } else {
                 return Err(Error::UnknownLabelFormat);
             }
         }
     }
 
-    pub fn from_str<T: Into<Cow<'static, str>>>(name: T) -> Result<Name<'a>, Error> {
-        Ok(Name::FromStr(name.into()))
+    pub fn from_str<T: Into<Cow<'static, str>>>(name: T) -> Name<'a> {
+        Self::FromStr(name.into())
     }
 
     pub fn write_to<T: io::Write>(&self, writer: &mut T) -> io::Result<()> {
         match *self {
-            Name::FromPacket { labels, original } => {
+            Self::FromPacket { labels, original } => {
                 let mut pos = 0;
                 loop {
                     let byte = labels[pos];
@@ -94,7 +94,7 @@ impl<'a> Name<'a> {
                     } else if byte & 0b1100_0000 == 0b1100_0000 {
                         let off = (BigEndian::read_u16(&labels[pos..pos + 2])
                             & !0b1100_0000_0000_0000) as usize;
-                        return Name::scan(&original[off..], original)
+                        return Self::scan(&original[off..], original)
                             .unwrap()
                             .0
                             .write_to(writer);
@@ -102,16 +102,16 @@ impl<'a> Name<'a> {
                         let end = pos + byte as usize + 1;
                         writer.write_all(&labels[pos..end])?;
                         pos = end;
-                        continue;
                     } else {
                         unreachable!();
                     }
                 }
             }
 
-            Name::FromStr(ref name) => {
+            Self::FromStr(ref name) => {
                 for part in name.split('.') {
                     assert!(part.len() < 63);
+                    #[allow(clippy::cast_possible_truncation)]
                     let ln = part.len() as u8;
                     writer.write_u8(ln)?;
                     writer.write_all(part.as_bytes())?;
@@ -124,10 +124,10 @@ impl<'a> Name<'a> {
     }
 }
 
-impl<'a> fmt::Display for Name<'a> {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+impl fmt::Display for Name<'_> {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
-            Name::FromPacket { labels, original } => {
+            Self::FromPacket { labels, original } => {
                 let mut pos = 0;
                 loop {
                     let byte = labels[pos];
@@ -140,7 +140,7 @@ impl<'a> fmt::Display for Name<'a> {
                             fmt.write_char('.')?;
                         }
                         return fmt::Display::fmt(
-                            &Name::scan(&original[off..], original).unwrap().0,
+                            &Self::scan(&original[off..], original).unwrap().0,
                             fmt,
                         );
                     } else if byte & 0b1100_0000 == 0 {
@@ -150,31 +150,30 @@ impl<'a> fmt::Display for Name<'a> {
                         let end = pos + byte as usize + 1;
                         fmt.write_str(from_utf8(&labels[pos + 1..end]).unwrap())?;
                         pos = end;
-                        continue;
                     } else {
                         unreachable!();
                     }
                 }
             }
 
-            Name::FromStr(ref name) => fmt.write_str(&name),
+            Self::FromStr(ref name) => fmt.write_str(name),
         }
     }
 }
 
-impl<'a> hash::Hash for Name<'a> {
+impl hash::Hash for Name<'_> {
     fn hash<H>(&self, state: &mut H)
     where
         H: hash::Hasher,
     {
         let mut buffer = Vec::new();
         self.write_to(&mut buffer).unwrap();
-        hash::Hash::hash(&buffer, state)
+        hash::Hash::hash(&buffer, state);
     }
 }
 
-impl<'a> PartialEq for Name<'a> {
-    fn eq(&self, other: &Name) -> bool {
+impl PartialEq for Name<'_> {
+    fn eq(&self, other: &Name<'_>) -> bool {
         let mut buffer = Vec::new();
         self.write_to(&mut buffer).unwrap();
 
@@ -185,4 +184,4 @@ impl<'a> PartialEq for Name<'a> {
     }
 }
 
-impl<'a> Eq for Name<'a> {}
+impl Eq for Name<'_> {}

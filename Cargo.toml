@@ -1,35 +1,33 @@
 [package]
 name = "libmdns"
-version = "0.8.0"
+version = "0.9.1"
 authors = ["Will Stott <willstott101+libmdns@gmail.com>"]
-
 description = "mDNS Responder library for building discoverable LAN services in Rust"
 repository = "https://github.com/librespot-org/libmdns"
 readme = "README.md"
 license = "MIT"
 edition = "2018"
+rust-version = "1.74"
 
 [dependencies]
 byteorder = "1.5"
-if-addrs = "0.11.0"
-hostname = "0.3.1"
-log = "0.4"
-multimap = "0.9"
-rand = "0.8"
 futures-util = "0.3"
-thiserror = "1.0"
-tokio = { version = "1.0", features = ["sync", "net", "rt"] }
-socket2 = { version = "0.5", features = ["all"] }
-
-[target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3", features = ["netioapi"] }
-
-[target.'cfg(not(windows))'.dependencies]
-nix = { version = "0.27", features = ["net"] }
+hostname = "0.4"
+if-addrs = { version = "0.14", features = ["link-local"] }
+log = "0.4"
+multimap = { version = "0.10", default-features = false }
+rand = "0.9"
+socket2 = { version = "0.6", features = ["all"] }
+thiserror = "2"
+tokio = { version = "1", default-features = false, features = [
+    "sync",
+    "net",
+    "rt",
+] }
 
 [dev-dependencies]
-env_logger = { version = "0.10", default-features = false, features = [
-  "color",
-  "humantime",
-  "auto-color",
+env_logger = { version = "0.11", default-features = false, features = [
+    "color",
+    "humantime",
+    "auto-color",
 ] }

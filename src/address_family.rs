@@ -1,14 +1,9 @@
 use super::MDNS_PORT;
-use if_addrs::get_if_addrs;
+use if_addrs::{get_if_addrs, IfAddr};
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
+use std::collections::HashSet;
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket};
-
-#[cfg(not(windows))]
-use nix::net::if_::if_nametoindex;
-
-#[cfg(windows)]
-use win::if_nametoindex;
 
 pub enum Inet {}
 
@@ -34,8 +29,7 @@ pub trait AddressFamily {
         socket.set_reuse_address(true)?;
         socket.set_nonblocking(true)?;
 
-        #[cfg(not(windows))]
-        #[cfg(not(target_os = "illumos"))]
+        #[cfg(all(unix, not(any(target_os = "solaris", target_os = "illumos"))))]
         socket.set_reuse_port(true)?;
 
         socket.bind(&addr)?;
@@ -53,14 +47,13 @@ impl AddressFamily for Inet {
     const DOMAIN: Domain = Domain::IPV4;
 
     fn join_multicast(socket: &Socket, multiaddr: &Self::Addr) -> io::Result<()> {
-        let addresses = get_address_list()?;
-        if addresses.is_empty() {
+        let addrs = get_one_nonloopback_ipv4_addr_per_iface()?;
+        if addrs.is_empty() {
             socket.join_multicast_v4(multiaddr, &Ipv4Addr::UNSPECIFIED)
         } else {
-            for (_, address) in addresses {
-                if let IpAddr::V4(ip) = address {
-                    socket.join_multicast_v4(multiaddr, &ip)?;
-                }
+            // TODO: If any join succeeds return success (log failures)
+            for ip in addrs {
+                socket.join_multicast_v4(multiaddr, &ip)?;
             }
             Ok(())
         }
@@ -76,44 +69,61 @@ impl AddressFamily for Inet6 {
     const DOMAIN: Domain = Domain::IPV6;
 
     fn join_multicast(socket: &Socket, multiaddr: &Self::Addr) -> io::Result<()> {
-        let addresses = get_address_list()?;
-        if addresses.is_empty() {
+        let indexes = get_one_nonloopback_ipv6_index_per_iface()?;
+        if indexes.is_empty() {
             socket.join_multicast_v6(multiaddr, 0)
         } else {
-            // We join multicast by interface, but each interface can have more than one ipv6 address.
-            // So we have to check we're not registering more than once, as the resulting error is then
-            // fatal to ipv6 listening.
-            // TODO: Make each interface resilient to failures on another.
-            let mut registered = Vec::new();
-            for (iface_name, address) in addresses {
-                if let IpAddr::V6(_) = address {
-                    let ipv6_index = if_nametoindex(iface_name.as_str()).unwrap_or(0);
-                    if ipv6_index != 0 && !registered.contains(&ipv6_index) {
-                        socket.join_multicast_v6(multiaddr, ipv6_index)?;
-                        registered.push(ipv6_index);
-                    }
-                }
+            // TODO: If any join succeeds return success (log failures)
+            for ipv6_index in indexes {
+                socket.join_multicast_v6(multiaddr, ipv6_index)?;
             }
             Ok(())
         }
     }
 }
 
-fn get_address_list() -> io::Result<Vec<(String, IpAddr)>> {
+fn get_one_nonloopback_ipv6_index_per_iface() -> io::Result<Vec<u32>> {
+    // There may be multiple ip addresses on a single interface and we join multicast by interface.
+    // Joining multicast on the same interface multiple times returns an error
+    // so we filter duplicate interfaces.
+    let mut collected_interfaces = HashSet::new();
     Ok(get_if_addrs()?
-        .iter()
-        .filter(|iface| !iface.is_loopback())
-        .map(|iface| (iface.name.clone(), iface.ip()))
+        .into_iter()
+        .filter_map(|iface| {
+            if iface.is_loopback() {
+                None
+            } else if matches!(iface.addr, IfAddr::V6(_)) {
+                if collected_interfaces.insert(iface.name.clone()) {
+                    iface.index
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        })
         .collect())
 }
 
-#[cfg(windows)]
-mod win {
-    use std::ffi::{CString, NulError};
-    use winapi::shared::netioapi;
-
-    pub fn if_nametoindex(ifname: &str) -> Result<u32, NulError> {
-        let c_str = CString::new(ifname)?;
-        Ok(unsafe { netioapi::if_nametoindex(c_str.as_ptr()) })
-    }
+fn get_one_nonloopback_ipv4_addr_per_iface() -> io::Result<Vec<Ipv4Addr>> {
+    // There may be multiple ip addresses on a single interface and we join multicast by interface.
+    // Joining multicast on the same interface multiple times returns an error
+    // so we filter duplicate interfaces.
+    let mut collected_interfaces = HashSet::new();
+    Ok(get_if_addrs()?
+        .into_iter()
+        .filter_map(|iface| {
+            if iface.is_loopback() {
+                None
+            } else if let IpAddr::V4(ip) = iface.ip() {
+                if collected_interfaces.insert(iface.name.clone()) {
+                    Some(ip)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        })
+        .collect())
 }
