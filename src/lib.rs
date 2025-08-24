@@ -29,7 +29,8 @@ use crate::address_family::{Inet, Inet6};
 use crate::fsm::{Command, FSM};
 use crate::services::{ServiceData, Services, ServicesInner};
 
-const DEFAULT_TTL: u32 = 60;
+/// The default TTL for announced mDNS Services.
+pub const DEFAULT_TTL: u32 = 60;
 const MDNS_PORT: u16 = 5353;
 
 pub struct Responder {
@@ -262,7 +263,7 @@ impl Responder {
 }
 
 impl Responder {
-    /// Register a service to be advertised by the `Responder`. The service is unregistered on
+    /// Register a service to be advertised by the Responder with the [`DEFAULT_TTL`]. The service is unregistered on
     /// drop.
     ///
     /// # Example
@@ -289,6 +290,50 @@ impl Responder {
     /// If the TXT records are longer than 255 bytes, this will panic.
     #[must_use]
     pub fn register(&self, svc_type: &str, svc_name: &str, port: u16, txt: &[&str]) -> Service {
+        self.register_with_ttl(svc_type, svc_name, port, txt, DEFAULT_TTL)
+    }
+
+    /// Register a service to be advertised by the Responder. With a custom TTL in seconds. The service is unregistered on
+    /// drop.
+    ///
+    /// You may prefer to use this over [`Responder::register`] if you know your service will be short-lived and want clients to respond
+    /// to it dissapearing more quickly (lower TTL), or if you find your service is very infrequently down and want to reduce
+    /// network traffic (higher TTL).
+    ///
+    /// This becomes more important whilst waiting for <https://github.com/librespot-org/libmdns/issues/27> to be resolved.
+    ///
+    /// # example
+    ///
+    /// ```no_run
+    /// use libmdns::Responder;
+    ///
+    /// # use std::io;
+    /// # fn main() -> io::Result<()> {
+    /// let responder = Responder::new()?;
+    /// // bind service
+    /// let _http_svc = responder.register_with_ttl(
+    ///          "_http._tcp".into(),
+    ///          "my really unreliable and short-lived http server".into(),
+    ///          80,
+    ///          &["path=/"],
+    ///          10 // mDNS clients are requested to re-check every 10 seconds for this HTTP server
+    ///      );
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// If the TXT records are longer than 255 bytes, this will panic.
+    #[must_use]
+    pub fn register_with_ttl(
+        &self,
+        svc_type: &str,
+        svc_name: &str,
+        port: u16,
+        txt: &[&str],
+        ttl: u32,
+    ) -> Service {
         let txt = if txt.is_empty() {
             vec![0]
         } else {
@@ -315,7 +360,7 @@ impl Responder {
 
         self.commands
             .borrow_mut()
-            .send_unsolicited(svc.clone(), DEFAULT_TTL, true);
+            .send_unsolicited(svc.clone(), ttl, true);
 
         let id = self.services.write().unwrap().register(svc);
 
