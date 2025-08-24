@@ -132,7 +132,7 @@ impl<AF: AddressFamily> FSM<AF> {
     }
 
     /// <https://www.rfc-editor.org/rfc/rfc6763#section-9>
-    fn handle_service_type_enumeration<'a>(
+    fn handle_service_type_enumeration(
         question: &dns_parser::Question<'_>,
         services: &ServicesInner,
         mut builder: AnswerBuilder,
@@ -152,6 +152,7 @@ impl<AF: AddressFamily> FSM<AF> {
         builder
     }
 
+    #[allow(clippy::too_many_lines)]
     fn handle_question(
         &self,
         question: &dns_parser::Question<'_>,
@@ -220,7 +221,7 @@ impl<AF: AddressFamily> FSM<AF> {
                     Self::handle_service_type_enumeration(question, &services, builder);
                 for svc in services.find_by_type(&question.qname) {
                     builder =
-                        builder.add_answer(&svc.typ, QueryClass::IN, DEFAULT_TTL, &svc.ptr_rr())
+                        builder.add_answer(&svc.typ, QueryClass::IN, DEFAULT_TTL, &svc.ptr_rr());
                 }
                 let mut builder = builder.move_to::<dns_parser::Additional>();
                 for svc in services.find_by_type(&question.qname) {
@@ -276,7 +277,7 @@ impl<AF: AddressFamily> FSM<AF> {
         let interfaces = match get_if_addrs() {
             Ok(interfaces) => interfaces,
             Err(err) => {
-                error!("could not get list of interfaces: {}", err);
+                error!("could not get list of interfaces: {err}");
                 vec![]
             }
         };
