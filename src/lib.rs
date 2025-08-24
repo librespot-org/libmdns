@@ -309,7 +309,7 @@ impl Responder {
     ///
     /// # use std::io;
     /// # fn main() -> io::Result<()> {
-    /// let responder = Responder::new()?;
+    /// let responder = Responder::new();
     /// // bind service
     /// let _http_svc = responder.register_with_ttl(
     ///          "_http._tcp".into(),

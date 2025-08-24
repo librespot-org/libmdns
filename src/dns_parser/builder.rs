@@ -201,6 +201,21 @@ impl<T: MoveTo<Answers>> Builder<T> {
 
         builder
     }
+
+    pub fn add_answers<'a, 'b>(
+        self,
+        name: &Name<'_>,
+        cls: QueryClass,
+        ttl: u32,
+        data: impl Iterator<Item = RRData<'b>> + 'a,
+    ) -> Builder<Answers> {
+        let mut builder = self.move_to::<Answers>();
+        for item in data {
+            builder.write_rr(name, cls, ttl, &item);
+            Header::inc_answers(&mut builder.buf).expect("Too many answers");
+        }
+        builder
+    }
 }
 
 impl<T: MoveTo<Nameservers>> Builder<T> {
@@ -219,10 +234,25 @@ impl<T: MoveTo<Nameservers>> Builder<T> {
 
         builder
     }
+
+    #[allow(dead_code)]
+    pub fn add_nameservers<'a, 'b>(
+        self,
+        name: &Name<'_>,
+        cls: QueryClass,
+        ttl: u32,
+        data: impl Iterator<Item = RRData<'b>> + 'a,
+    ) -> Builder<Nameservers> {
+        let mut builder = self.move_to::<Nameservers>();
+        for item in data {
+            builder.write_rr(name, cls, ttl, &item);
+            Header::inc_nameservers(&mut builder.buf).expect("Too many nameservers");
+        }
+        builder
+    }
 }
 
-impl Builder<Additional> {
-    #[allow(dead_code)]
+impl<T: MoveTo<Additional>> Builder<T> {
     pub fn add_additional(
         self,
         name: &Name<'_>,
@@ -233,8 +263,23 @@ impl Builder<Additional> {
         let mut builder = self.move_to::<Additional>();
 
         builder.write_rr(name, cls, ttl, data);
-        Header::inc_nameservers(&mut builder.buf).expect("Too many additional answers");
+        Header::inc_additional(&mut builder.buf).expect("Too many additional answers");
 
+        builder
+    }
+
+    pub fn add_additionals<'a, 'b>(
+        self,
+        name: &Name<'_>,
+        cls: QueryClass,
+        ttl: u32,
+        data: impl Iterator<Item = RRData<'b>> + 'a,
+    ) -> Builder<Additional> {
+        let mut builder = self.move_to::<Additional>();
+        for item in data {
+            builder.write_rr(name, cls, ttl, &item);
+            Header::inc_additional(&mut builder.buf).expect("Too many additional answers");
+        }
         builder
     }
 }

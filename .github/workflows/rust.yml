@@ -1,4 +1,4 @@
-name: rustfmt
+name: cargo
 
 on:
   push:
@@ -17,3 +17,5 @@ jobs:
       run: cargo +stable fmt -- --check
     - name: Check linting
       run: cargo +stable clippy -- -Dwarnings
+    - name: Check unit tests
+      run: cargo +stable test
