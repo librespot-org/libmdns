@@ -26,4 +26,6 @@ pub enum Error {
     LabelIsNotAscii,
     #[error("parser is in the wrong state")]
     WrongState,
+    #[error("label length exceeds maximum allowed size")]
+    LabelTooLong,
 }

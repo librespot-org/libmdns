@@ -1,6 +1,6 @@
 use crate::dns_parser::{Name, RRData};
 use multimap::MultiMap;
-use rand::{thread_rng, Rng};
+use rand::{rng, Rng};
 use std::collections::HashMap;
 use std::slice;
 use std::sync::{Arc, RwLock};
@@ -21,7 +21,7 @@ pub struct ServicesInner {
 impl ServicesInner {
     pub fn new(hostname: String) -> Self {
         ServicesInner {
-            hostname: Name::from_str(hostname).unwrap(),
+            hostname: Name::from_str(hostname),
             by_id: HashMap::new(),
             by_type: MultiMap::new(),
             by_name: HashMap::new(),
@@ -32,7 +32,7 @@ impl ServicesInner {
         &self.hostname
     }
 
-    pub fn find_by_name<'a>(&'a self, name: &'a Name<'a>) -> Option<&ServiceData> {
+    pub fn find_by_name<'a>(&'a self, name: &'a Name<'a>) -> Option<&'a ServiceData> {
         self.by_name.get(name).and_then(|id| self.by_id.get(id))
     }
 
@@ -41,14 +41,15 @@ impl ServicesInner {
 
         FindByType {
             services: self,
-            ids: ids,
+            ids,
         }
     }
 
     pub fn register(&mut self, svc: ServiceData) -> usize {
-        let mut id = thread_rng().gen::<usize>();
+        let random_usize = || rng().random_range(..=usize::MAX);
+        let mut id = random_usize();
         while self.by_id.contains_key(&id) {
-            id = thread_rng().gen::<usize>();
+            id = random_usize();
         }
 
         self.by_type.insert(svc.typ.clone(), id);
@@ -72,7 +73,7 @@ impl ServicesInner {
                 assert_eq!(*entry.get(), id);
                 entry.remove();
             }
-            _ => {
+            Entry::Vacant(_) => {
                 panic!("unknown/wrong service for id {}", id);
             }
         }
@@ -121,11 +122,11 @@ pub struct ServiceData {
 
 /// Packet building helpers for `fsm` to respond with `ServiceData`
 impl ServiceData {
-    pub fn ptr_rr(&self) -> RRData {
+    pub fn ptr_rr(&self) -> RRData<'_> {
         RRData::PTR(self.name.clone())
     }
 
-    pub fn srv_rr<'a>(&self, hostname: &'a Name) -> RRData<'a> {
+    pub fn srv_rr<'a>(&self, hostname: &'a Name<'_>) -> RRData<'a> {
         RRData::SRV {
             priority: 0,
             weight: 0,
@@ -134,7 +135,7 @@ impl ServiceData {
         }
     }
 
-    pub fn txt_rr(&self) -> RRData {
+    pub fn txt_rr(&self) -> RRData<'_> {
         RRData::TXT(&self.txt)
     }
 }

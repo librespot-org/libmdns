@@ -1,12 +1,10 @@
-use std::i32;
-
 use byteorder::{BigEndian, ByteOrder};
 
 use super::{Class, RRData, ResourceRecord, Type};
 use super::{Error, Header, Name, Packet, QueryClass, QueryType, Question};
 
-impl<'a> Packet<'a> {
-    pub fn parse(data: &[u8]) -> Result<Packet, Error> {
+impl Packet<'_> {
+    pub fn parse(data: &[u8]) -> Result<Packet<'_>, Error> {
         let header = Header::parse(data)?;
         let mut offset = Header::size();
         let mut questions = Vec::with_capacity(header.questions as usize);
@@ -25,9 +23,9 @@ impl<'a> Packet<'a> {
             offset += 2;
             questions.push(Question {
                 qname: name,
-                qtype: qtype,
-                qclass: qclass,
-                qu: qu,
+                qtype,
+                qclass,
+                qu,
             });
         }
         let mut answers = Vec::with_capacity(header.answers as usize);
@@ -39,10 +37,10 @@ impl<'a> Packet<'a> {
             nameservers.push(parse_record(data, &mut offset)?);
         }
         Ok(Packet {
-            header: header,
-            questions: questions,
-            answers: answers,
-            nameservers: nameservers,
+            header,
+            questions,
+            answers,
+            nameservers,
             additional: Vec::new(), // TODO(tailhook)
         })
     }
@@ -72,10 +70,10 @@ fn parse_record<'a>(data: &'a [u8], offset: &mut usize) -> Result<ResourceRecord
     let data = RRData::parse(typ, &data[*offset..*offset + rdlen], data)?;
     *offset += rdlen;
     Ok(ResourceRecord {
-        name: name,
-        cls: cls,
-        ttl: ttl,
-        data: data,
+        name,
+        cls,
+        ttl,
+        data,
     })
 }
 
@@ -223,7 +221,7 @@ mod test {
         assert_eq!(packet.nameservers.len(), 1);
         assert_eq!(&packet.nameservers[0].name.to_string()[..], "net");
         assert_eq!(packet.nameservers[0].cls, C::IN);
-        assert_eq!(packet.nameservers[0].ttl, 120275);
+        assert_eq!(packet.nameservers[0].ttl, 120_275);
         match packet.nameservers[0].data {
             RRData::NS(ref ns) => {
                 assert_eq!(&ns.to_string()[..], "g.gtld-servers.net");
@@ -267,7 +265,7 @@ mod test {
         assert_eq!(packet.questions[0].qclass, QC::IN);
         assert_eq!(&packet.questions[0].qname.to_string()[..], "google.com");
         assert_eq!(packet.answers.len(), 6);
-        let ips = vec![
+        let ips = [
             Ipv4Addr::new(64, 233, 164, 100),
             Ipv4Addr::new(64, 233, 164, 139),
             Ipv4Addr::new(64, 233, 164, 113),
@@ -275,11 +273,11 @@ mod test {
             Ipv4Addr::new(64, 233, 164, 101),
             Ipv4Addr::new(64, 233, 164, 138),
         ];
-        for i in 0..6 {
-            assert_eq!(&packet.answers[i].name.to_string()[..], "google.com");
-            assert_eq!(packet.answers[i].cls, C::IN);
-            assert_eq!(packet.answers[i].ttl, 239);
-            match packet.answers[i].data {
+        for (i, answer) in packet.answers.iter().enumerate() {
+            assert_eq!(&answer.name.to_string(), "google.com");
+            assert_eq!(answer.cls, C::IN);
+            assert_eq!(answer.ttl, 239);
+            match answer.data {
                 RRData::A(addr) => {
                     assert_eq!(addr, ips[i]);
                 }
@@ -360,21 +358,18 @@ mod test {
             "_xmpp-server._tcp.gmail.com"
         );
         assert_eq!(packet.answers.len(), 5);
-        let items = vec![
+        let items = [
             (5, 0, 5269, "xmpp-server.l.google.com"),
             (20, 0, 5269, "alt3.xmpp-server.l.google.com"),
             (20, 0, 5269, "alt1.xmpp-server.l.google.com"),
             (20, 0, 5269, "alt2.xmpp-server.l.google.com"),
             (20, 0, 5269, "alt4.xmpp-server.l.google.com"),
         ];
-        for i in 0..5 {
-            assert_eq!(
-                &packet.answers[i].name.to_string()[..],
-                "_xmpp-server._tcp.gmail.com"
-            );
-            assert_eq!(packet.answers[i].cls, C::IN);
-            assert_eq!(packet.answers[i].ttl, 900);
-            match *&packet.answers[i].data {
+        for (i, answer) in packet.answers.iter().enumerate() {
+            assert_eq!(&answer.name.to_string(), "_xmpp-server._tcp.gmail.com");
+            assert_eq!(answer.cls, C::IN);
+            assert_eq!(answer.ttl, 900);
+            match answer.data {
                 RRData::SRV {
                     priority,
                     weight,
@@ -424,18 +419,18 @@ mod test {
         assert_eq!(packet.questions[0].qclass, QC::IN);
         assert_eq!(&packet.questions[0].qname.to_string()[..], "gmail.com");
         assert_eq!(packet.answers.len(), 5);
-        let items = vec![
+        let items = [
             (5, "gmail-smtp-in.l.google.com"),
             (10, "alt1.gmail-smtp-in.l.google.com"),
             (40, "alt4.gmail-smtp-in.l.google.com"),
             (20, "alt2.gmail-smtp-in.l.google.com"),
             (30, "alt3.gmail-smtp-in.l.google.com"),
         ];
-        for i in 0..5 {
-            assert_eq!(&packet.answers[i].name.to_string()[..], "gmail.com");
-            assert_eq!(packet.answers[i].cls, C::IN);
-            assert_eq!(packet.answers[i].ttl, 1148);
-            match *&packet.answers[i].data {
+        for (i, answer) in packet.answers.iter().enumerate() {
+            assert_eq!(&answer.name.to_string(), "gmail.com");
+            assert_eq!(answer.cls, C::IN);
+            assert_eq!(answer.ttl, 1148);
+            match answer.data {
                 RRData::MX {
                     preference,
                     ref exchange,
@@ -543,7 +538,7 @@ mod test {
             ref x => panic!("Wrong rdata {:?}", x),
         }
 
-        let ips = vec![
+        let ips = [
             Ipv4Addr::new(104, 16, 103, 204),
             Ipv4Addr::new(104, 16, 107, 204),
             Ipv4Addr::new(104, 16, 104, 204),

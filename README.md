@@ -13,14 +13,14 @@ To use it, add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-libmdns = "0.7"
+libmdns = "0.9"
 ```
 
-See the [example](https://github.com/librespot-org/libmdns/blob/stable-0.7.x/examples/register.rs) for use within code.
+See the [example](https://github.com/librespot-org/libmdns/blob/stable-0.9.x/examples/register.rs) for use within code.
 
 ## Dependencies
 
-libmdns' oldest supported Rust toolchain is `1.70.0`, _however it may compile fine on older versions of rust._
+libmdns' MSRV (oldest supported Rust toolchain) is 1.74.0.
 
 **We hold no strong garantees for sticking to a Minimum Supported Rust Version**. Please open an issue on GitHub if you need support for older compilers or different platforms.
 
