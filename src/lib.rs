@@ -58,6 +58,7 @@ impl Responder {
     pub fn new() -> Responder {
         Self::new_with_ip_list(Vec::new()).unwrap()
     }
+
     /// Spawn a `Responder` task on an new os thread.
     /// DNS response records will have the reported IPs limited to those passed in here.
     /// This can be particularly useful on machines with lots of networks created by tools such as
@@ -309,7 +310,7 @@ impl Responder {
     ///
     /// # use std::io;
     /// # fn main() -> io::Result<()> {
-    /// let responder = Responder::new()?;
+    /// let responder = Responder::new();
     /// // bind service
     /// let _http_svc = responder.register_with_ttl(
     ///          "_http._tcp".into(),
