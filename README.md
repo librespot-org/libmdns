@@ -13,7 +13,7 @@ To use it, add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-libmdns = "0.9"
+libmdns = "0.10"
 ```
 
 See the [example](https://github.com/librespot-org/libmdns/blob/stable-0.9.x/examples/register.rs) for use within code.
